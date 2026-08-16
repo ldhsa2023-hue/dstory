@@ -32,7 +32,35 @@ npm run dev (Next.js 14.2.35, localhost:3000)
 
 ## Phase 2 — Audio Director, Caption Engine, Effect Director, Publish Pack, Policy/QC
 
-**상태: NOT STARTED**
+**상태: DONE**
+
+Phase 1에서 만든 "빙하 서약자" Production(실제 트렌드→컨셉→훅→프롬프트팩을 거쳐온 것)에 이어서 다음을 curl(API)과 Playwright(브라우저 스크린샷) 양쪽으로 실측 검증했다.
+
+```
+Production › AUDIO: GENERATE AUDIO PLAN
+  → Music Blueprint(purpose/mood/genre/energy/tempo/BPM/instrumentation/Intro-Build-Peak-Payoff-Outro 구조) +
+    Music Master Prompt(외부 음악 생성 AI용) + Music Timeline(스토리보드 실제 씬 길이에 맞춰 0-24s 5구간) +
+    SFX Cue Sheet(5개, 시간/타입/강도/이유/볼륨) 생성 및 SQLite 저장 (1분 2초)
+Production › CAPTIONS: GENERATE CAPTIONS
+  → 9개 자막(HOOK_TEXT/NARRATION/DIALOGUE 혼합, position/animation 포함) + 실제 재생 가능한 SRT/VTT 생성 (23초)
+Production › EFFECTS: GENERATE EFFECT TIMELINE (BALANCED)
+  → 18개 효과, 전부 purpose(hook/information/emotion/transition/payoff)와 reason 명시, audio_sync 설명 포함 (1분 10초)
+Production › PUBLISH: GENERATE PUBLISH PACK
+  → 제목 16개(요구한 15개 이상 충족, 상위 3개 UI 노출 + 나머지 접기), Description, Hashtags/Tags,
+    썸네일 컨셉 정확히 5개, Instagram 캡션+해시태그(별도 작성, YouTube 설명 재사용 아님), Pinned Comment,
+    Policy Review(4개 항목 PASS/REVIEW/BLOCK — 실제로 "반복 콘텐츠 REVIEW"를 정확히 짚어냄),
+    AI Disclosure Review(realistic_ai_scene/real_person/viewer_confusion_risk + 추천, 최종 판단은 사용자 몫),
+    Content QC(6개 항목 — 실제로 "ending_not_abrupt: REVIEW"를 클리프행어 엔딩에 대해 정직하게 표시) 생성 (1분 27초)
+  → APPROVE FINAL (Human Approval Gate) 클릭 → publish_packs.ready_to_publish=true,
+    productions.status='READY TO PUBLISH'로 전환 확인. 자동 게시 기능 없음(스펙 63 준수).
+```
+
+전 구간 SQLite에 저장되고 새로고침 후 유지됨을 확인했다. 모든 COPY 버튼 동작 확인.
+
+**Phase 2에서 의도적으로 하지 않은 것**:
+- "63. HUMAN APPROVAL GATE"는 이 앱에서 아직 실제 렌더링된 영상 파일이 없으므로(Phase 3 미구현) **콘텐츠 패키지(메타데이터) 승인**으로만 구현했다 — "최종 영상 승인"이 아니다. 이는 코드 주석과 UI 문구에 명시했다.
+- Final QC(섹션 58)의 기술적 항목(해상도/오디오 클리핑/블랙프레임 등)은 렌더된 파일이 있어야 검사 가능하므로 Phase 3로 미룬다. 대신 Content QC(섹션 62, 기획 수준 QC)만 구현했다.
+- Music/SFX 자체 음원 파일은 생성하지 않는다(스펙 27 자동화 경계 준수) — 프롬프트와 큐시트만 생성한다.
 
 ## Phase 3 — Asset Manager, FFmpeg 기반 Post Studio, Preview/Final Render
 
@@ -71,4 +99,4 @@ npm run dev
 
 ---
 
-**VIRAL STUDIO V3.1 — PHASE 1 READY.** Phase 2~4와 V3.2는 아직 준비되지 않았다.
+**VIRAL STUDIO V3.1 — PHASE 1, PHASE 2 READY.** Phase 3~4와 V3.2는 아직 준비되지 않았다.

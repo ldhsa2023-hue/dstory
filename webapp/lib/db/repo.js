@@ -326,6 +326,190 @@ function parsePromptPackRow(row) {
   };
 }
 
+// ---------- Audio Plans ----------
+export function upsertAudioPlan(productionId, patch) {
+  const db = getDb();
+  const existing = db.prepare('SELECT * FROM audio_plans WHERE production_id = ?').get(productionId);
+  if (existing) {
+    const merged = { ...parseAudioPlanRow(existing), ...patch };
+    db.prepare('UPDATE audio_plans SET blueprint = ?, music_prompt = ?, music_timeline = ?, sfx_cues = ? WHERE production_id = ?').run(
+      JSON.stringify(merged.blueprint || {}),
+      merged.music_prompt || '',
+      JSON.stringify(merged.music_timeline || []),
+      JSON.stringify(merged.sfx_cues || []),
+      productionId
+    );
+    return getAudioPlan(productionId);
+  }
+  const id = genId('audio');
+  db.prepare(
+    'INSERT INTO audio_plans (id, created_at, production_id, blueprint, music_prompt, music_timeline, sfx_cues) VALUES (?,?,?,?,?,?,?)'
+  ).run(
+    id,
+    now(),
+    productionId,
+    JSON.stringify(patch.blueprint || {}),
+    patch.music_prompt || '',
+    JSON.stringify(patch.music_timeline || []),
+    JSON.stringify(patch.sfx_cues || [])
+  );
+  return getAudioPlan(productionId);
+}
+
+export function getAudioPlan(productionId) {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM audio_plans WHERE production_id = ?').get(productionId);
+  return row ? parseAudioPlanRow(row) : null;
+}
+
+function parseAudioPlanRow(row) {
+  return {
+    ...row,
+    blueprint: safeParse(row.blueprint, {}),
+    music_timeline: safeParse(row.music_timeline, []),
+    sfx_cues: safeParse(row.sfx_cues, []),
+  };
+}
+
+// ---------- Caption Tracks ----------
+export function upsertCaptionTrack(productionId, patch) {
+  const db = getDb();
+  const existing = db.prepare('SELECT * FROM caption_tracks WHERE production_id = ?').get(productionId);
+  if (existing) {
+    const merged = { ...parseCaptionTrackRow(existing), ...patch };
+    db.prepare('UPDATE caption_tracks SET captions = ?, srt = ?, vtt = ? WHERE production_id = ?').run(
+      JSON.stringify(merged.captions || []),
+      merged.srt || '',
+      merged.vtt || '',
+      productionId
+    );
+    return getCaptionTrack(productionId);
+  }
+  const id = genId('cap');
+  db.prepare('INSERT INTO caption_tracks (id, created_at, production_id, captions, srt, vtt) VALUES (?,?,?,?,?,?)').run(
+    id,
+    now(),
+    productionId,
+    JSON.stringify(patch.captions || []),
+    patch.srt || '',
+    patch.vtt || ''
+  );
+  return getCaptionTrack(productionId);
+}
+
+export function getCaptionTrack(productionId) {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM caption_tracks WHERE production_id = ?').get(productionId);
+  return row ? parseCaptionTrackRow(row) : null;
+}
+
+function parseCaptionTrackRow(row) {
+  return { ...row, captions: safeParse(row.captions, []) };
+}
+
+// ---------- Effect Tracks ----------
+export function upsertEffectTrack(productionId, patch) {
+  const db = getDb();
+  const existing = db.prepare('SELECT * FROM effect_tracks WHERE production_id = ?').get(productionId);
+  if (existing) {
+    const merged = { ...parseEffectTrackRow(existing), ...patch };
+    db.prepare('UPDATE effect_tracks SET effects = ? WHERE production_id = ?').run(
+      JSON.stringify(merged.effects || []),
+      productionId
+    );
+    return getEffectTrack(productionId);
+  }
+  const id = genId('fx');
+  db.prepare('INSERT INTO effect_tracks (id, created_at, production_id, effects) VALUES (?,?,?,?)').run(
+    id,
+    now(),
+    productionId,
+    JSON.stringify(patch.effects || [])
+  );
+  return getEffectTrack(productionId);
+}
+
+export function getEffectTrack(productionId) {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM effect_tracks WHERE production_id = ?').get(productionId);
+  return row ? parseEffectTrackRow(row) : null;
+}
+
+function parseEffectTrackRow(row) {
+  return { ...row, effects: safeParse(row.effects, []) };
+}
+
+// ---------- Publish Packs ----------
+export function upsertPublishPack(productionId, patch) {
+  const db = getDb();
+  const existing = db.prepare('SELECT * FROM publish_packs WHERE production_id = ?').get(productionId);
+  if (existing) {
+    const merged = { ...parsePublishPackRow(existing), ...patch };
+    db.prepare(
+      `UPDATE publish_packs SET titles = ?, description = ?, hashtags = ?, tags = ?, thumbnail_concepts = ?,
+        pinned_comment = ?, instagram_caption = ?, instagram_hashtags = ?, policy_review = ?, qc_checklist = ?,
+        ready_to_publish = ?
+       WHERE production_id = ?`
+    ).run(
+      JSON.stringify(merged.titles || []),
+      merged.description || '',
+      JSON.stringify(merged.hashtags || []),
+      JSON.stringify(merged.tags || []),
+      JSON.stringify(merged.thumbnail_concepts || []),
+      merged.pinned_comment || '',
+      merged.instagram_caption || '',
+      JSON.stringify(merged.instagram_hashtags || []),
+      JSON.stringify(merged.policy_review || {}),
+      JSON.stringify(merged.qc_checklist || {}),
+      merged.ready_to_publish ? 1 : 0,
+      productionId
+    );
+    return getPublishPack(productionId);
+  }
+  const id = genId('pub');
+  db.prepare(
+    `INSERT INTO publish_packs (id, created_at, production_id, titles, description, hashtags, tags,
+      thumbnail_concepts, pinned_comment, instagram_caption, instagram_hashtags, policy_review, qc_checklist, ready_to_publish)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).run(
+    id,
+    now(),
+    productionId,
+    JSON.stringify(patch.titles || []),
+    patch.description || '',
+    JSON.stringify(patch.hashtags || []),
+    JSON.stringify(patch.tags || []),
+    JSON.stringify(patch.thumbnail_concepts || []),
+    patch.pinned_comment || '',
+    patch.instagram_caption || '',
+    JSON.stringify(patch.instagram_hashtags || []),
+    JSON.stringify(patch.policy_review || {}),
+    JSON.stringify(patch.qc_checklist || {}),
+    patch.ready_to_publish ? 1 : 0
+  );
+  return getPublishPack(productionId);
+}
+
+export function getPublishPack(productionId) {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM publish_packs WHERE production_id = ?').get(productionId);
+  return row ? parsePublishPackRow(row) : null;
+}
+
+function parsePublishPackRow(row) {
+  return {
+    ...row,
+    titles: safeParse(row.titles, []),
+    hashtags: safeParse(row.hashtags, []),
+    tags: safeParse(row.tags, []),
+    thumbnail_concepts: safeParse(row.thumbnail_concepts, []),
+    instagram_hashtags: safeParse(row.instagram_hashtags, []),
+    policy_review: safeParse(row.policy_review, {}),
+    qc_checklist: safeParse(row.qc_checklist, {}),
+    ready_to_publish: Boolean(row.ready_to_publish),
+  };
+}
+
 function safeParse(str, fallback = null) {
   if (!str) return fallback;
   try {

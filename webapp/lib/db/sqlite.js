@@ -108,5 +108,48 @@ function migrate(db) {
       higgsfield_prompts TEXT,
       higgsfield_mode TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS audio_plans (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      production_id TEXT NOT NULL,
+      blueprint TEXT,
+      music_prompt TEXT,
+      music_timeline TEXT,
+      sfx_cues TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS caption_tracks (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      production_id TEXT NOT NULL,
+      captions TEXT,
+      srt TEXT,
+      vtt TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS effect_tracks (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      production_id TEXT NOT NULL,
+      effects TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS publish_packs (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      production_id TEXT NOT NULL,
+      titles TEXT,
+      description TEXT,
+      hashtags TEXT,
+      tags TEXT,
+      thumbnail_concepts TEXT,
+      pinned_comment TEXT,
+      instagram_caption TEXT,
+      instagram_hashtags TEXT,
+      policy_review TEXT,
+      qc_checklist TEXT,
+      ready_to_publish INTEGER DEFAULT 0
+    );
   `);
 }

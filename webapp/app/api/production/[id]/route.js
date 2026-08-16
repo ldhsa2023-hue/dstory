@@ -1,5 +1,15 @@
 import { NextResponse } from 'next/server';
-import { getProduction, getConcept, listHooksByConcept, getPromptPack, updateProduction } from '../../../../lib/db/repo';
+import {
+  getProduction,
+  getConcept,
+  listHooksByConcept,
+  getPromptPack,
+  getAudioPlan,
+  getCaptionTrack,
+  getEffectTrack,
+  getPublishPack,
+  updateProduction,
+} from '../../../../lib/db/repo';
 
 export async function GET(_req, { params }) {
   const production = getProduction(params.id);
@@ -7,7 +17,11 @@ export async function GET(_req, { params }) {
   const concept = production.concept_id ? getConcept(production.concept_id) : null;
   const hooks = concept ? listHooksByConcept(concept.id) : [];
   const promptPack = getPromptPack(production.id);
-  return NextResponse.json({ production, concept, hooks, promptPack });
+  const audioPlan = getAudioPlan(production.id);
+  const captionTrack = getCaptionTrack(production.id);
+  const effectTrack = getEffectTrack(production.id);
+  const publishPack = getPublishPack(production.id);
+  return NextResponse.json({ production, concept, hooks, promptPack, audioPlan, captionTrack, effectTrack, publishPack });
 }
 
 export async function PATCH(req, { params }) {
