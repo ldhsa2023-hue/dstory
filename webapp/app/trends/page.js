@@ -130,7 +130,7 @@ export default function TrendRadarPage() {
           ))}
         </div>
         <button className="btn-primary" onClick={handleScan} disabled={scanning}>
-          {scanning ? 'SCANNING... (WebSearch 진행 중, 최대 ~2-3분)' : 'SCAN NOW'}
+          {scanning ? 'SCANNING... (WebSearch 진행 중, 최대 ~5분)' : 'SCAN NOW'}
         </button>
 
         {scanResult?.mode === 'template' && (

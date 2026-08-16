@@ -90,7 +90,7 @@ export async function POST(req) {
       prompt,
       system,
       allowedTools: ['WebSearch', 'WebFetch'],
-      timeoutMs: 170000,
+      timeoutMs: 280000,
     }));
   } catch (err) {
     return NextResponse.json({ mode: 'error', prompt, error: err.message, trends: [] }, { status: 200 });

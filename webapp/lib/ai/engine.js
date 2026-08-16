@@ -87,6 +87,11 @@ export class ClaudeCLIEngine {
         maxBuffer: 20 * 1024 * 1024,
       }));
     } catch (err) {
+      if (err.killed || err.signal === 'SIGTERM') {
+        throw new AIEngineError(
+          `Claude CLI 응답 시간 초과 (${Math.round(timeoutMs / 1000)}초 제한). WebSearch 조사가 오래 걸리는 요청일 수 있습니다. 다시 시도해보세요.`
+        );
+      }
       throw new AIEngineError(`Claude CLI 실행 실패: ${err.message}`);
     }
 
