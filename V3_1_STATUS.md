@@ -356,4 +356,60 @@ First-Run Wizard:
 
 ---
 
-**VIRAL STUDIO V3.1 — PHASE 1, 2, 3, 4 READY. V3.2 — PHASE A READY. Google Flow Provider Patch 1~8 전체 READY.** V3.2의 나머지 범위(Timeline UI, Beat Sync, Edit Plan→렌더러 연동)만 아직 준비되지 않았다.
+## V3.2 나머지 범위 — Timeline UI + Beat Sync
+
+**상태: DONE (Edit Plan→렌더러 자동 연동은 여전히 범위 밖 — `V32_TIMELINE_BEATSYNC_PLAN.md` 참고)**
+
+## 실제로 구현하고 검증한 것
+
+```
+LocalBeatAnalyzer (lib/audio/pcmDecode.js + beatAnalyzer.js):
+  → ffmpeg로 mono 22050Hz f32le PCM 디코드(execFile 인자 배열, 기존
+    lib/media/signalAnalysis.js 패턴 그대로 재사용) 후 순수 JS로 에너지 기반
+    온셋 검출 + IOI(Inter-Onset-Interval) 히스토그램 방식 BPM 추정.
+  → ffmpeg aevalsrc로 실제 120 BPM 클릭 트랙(0.5s 간격) 합성 → 정확히
+    bpm:120, confidence:HIGH, 23개 온셋(0.49~11.47s, 0.5s 간격) 검출 확인.
+  → 90 BPM(0.6667s 간격) 클릭 트랙 → bpm:90.9, HIGH 검출 확인(같은 코드가
+    다른 템포에서도 정확함을 확인 — 하드코딩 아님).
+  → 완전 무음(anullsrc) → bpm:null, onsets:0, confidence:LOW로 정직하게
+    "산출 안 됨" 반환하는 것을 확인. 이 과정에서 실제 버그를 하나 발견해
+    수정했다: 초기 구현은 에너지가 완전히 0인 구간에서 임계값도 0으로
+    수렴해 매 100ms마다 가짜 온셋을 만들어냈다(무음에서 50개 온셋 오검출).
+    `odf[i] > 0` 엄격 부등호를 추가해 재현 테스트로 수정 확인.
+  → 낮은 진폭 백색소음 테스트에서는 23개의 온셋이 오검출되고 confidence가
+    MEDIUM으로 나왔다 — 에너지 기반 방식의 한계이며, 이를 숨기지 않고
+    `method` 필드와 UI에 "근사치 — 전문 비트 트래킹 라이브러리 아님"으로
+    명시했다.
+  → AUDIO 탭에 MUSIC 자산 업로드 시 ANALYZE BEAT 버튼 노출, 실측 BPM/
+    Confidence/온셋 수를 Claude가 추정한 blueprint.bpm_range와 나란히
+    표시(추정값을 실측으로 조용히 덮어쓰지 않음).
+
+TIMELINE 탭:
+  → Storyboard(CLIPS), buildGlobalSignalMap 결과(SIGNALS, 기존 함수
+    재사용 — 재구현 안 함), 최신 Edit Plan의 decisions(EDIT DECISIONS),
+    Beat Analysis의 onset_times(BEAT) 4개 트랙을 줌 가능한 가로 타임라인에
+    렌더링. 트랙별 표시/숨김 체크박스("트랙 뮤트") 구현.
+  → 각 클립 블록 오른쪽 가장자리를 실제 마우스 드래그로 트림 — Playwright로
+    120px 드래그(줌 60px/s 기준 +2초) → Scene 1이 8.0s→10.0s로, Scene 2가
+    자동으로 10s 지점부터 재배치되는 것을 확인.
+  → 이 과정에서도 실제 버그를 하나 발견해 수정했다: 최초 구현은 드래그 종료
+    시 저장 함수가 `useEffect`에 등록된 시점(드래그 시작 시점)의 오래된
+    `liveDurations`/`bundle` 상태를 클로저로 캡처하고 있어서, 화면에는
+    10.0s로 보이지만 실제로는 PATCH 요청이 전혀 전송되지 않는 조용한
+    실패였다(하드 리로드하면 8.0s로 되돌아감). `useRef`로 항상 최신 상태를
+    가리키게 고쳐서, 하드 리로드 후에도 SQLite에 duration_sec: 10이 실제로
+    저장돼 있음을 직접 조회로 재확인했다.
+```
+
+`next build` 클린 컴파일(개발 서버와 프로덕션 빌드를 같은 SQLite 파일에 동시에 띄우면 WAL 파일 손상이 발생할 수 있음을 이 세션에서 직접 겪었다 — 이후 항상 순차적으로 실행).
+
+## 이번에도 하지 않은 것 (정직하게 기록)
+
+- **씬 순서 재배열**: scene_number가 Higgsfield/Google Flow 프롬프트 전체의 참조 키이므로 드래그 재정렬은 지원하지 않는다. 트림(길이 조절)만 가능하다.
+- **Edit Plan을 렌더러에 자동 적용**: EditDecision을 FFmpeg 렌더 매니페스트에 실제로 반영하는 것은 여전히 범위 밖이다 — Timeline UI는 "보기+트림"까지다.
+- **전문 비트 트래킹 라이브러리 수준의 정확도**: 에너지 기반 온셋 검출은 스펙트럴 플럭스/복소 도메인 방식보다 약하다. 이 세션에서 실측한 대로 저진폭 노이즈에서 온셋을 과다검출할 수 있다.
+- **Undo/Redo**: 트림은 즉시 저장되며 되돌리기 UI는 없다.
+
+---
+
+**VIRAL STUDIO V3.1 — PHASE 1, 2, 3, 4 READY. V3.2 — PHASE A + Timeline UI + Beat Sync READY. Google Flow Provider Patch 1~8 전체 READY.** 남은 것은 Edit Plan→렌더러 자동 연동뿐이다.

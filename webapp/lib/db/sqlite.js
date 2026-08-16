@@ -241,6 +241,19 @@ function migrate(db) {
       clips TEXT,
       version INTEGER DEFAULT 1
     );
+
+    CREATE TABLE IF NOT EXISTS beat_analyses (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      production_id TEXT NOT NULL,
+      asset_id TEXT NOT NULL,
+      bpm REAL,
+      confidence TEXT,
+      onset_times TEXT,
+      onset_count INTEGER,
+      method TEXT,
+      duration_sec REAL
+    );
   `);
 
   // Additive columns on pre-existing tables (node:sqlite has no

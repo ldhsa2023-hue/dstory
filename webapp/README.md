@@ -84,6 +84,21 @@ PRODUCTION › AUTO EDIT 탭: Intensity(MINIMAL/BALANCED/AGGRESSIVE) 선택 → 
 
 이 클립이 실제로는 아무 콘텐츠 없는 단색 테스트 영상임에도 Claude가 "solid, uniform blue/green/red" 로 정확히 묘사하고 스스로 BAD_FRAME 이슈를 표시했다 — 보지 못한 내용을 추측하지 않는다는 원칙이 실제로 지켜짐을 확인했다. 자세한 내용은 `V3_1_STATUS.md`의 V3.2 섹션과 `IMPLEMENTATION_PLAN.md`의 축소 범위 설명 참고.
 
+## V3.2 나머지 범위 — TIMELINE 탭 / Beat Sync (실제 동작 확인됨)
+
+```
+PRODUCTION › AUDIO 탭: MUSIC 자산 업로드 후 ANALYZE BEAT 클릭
+  → ffmpeg로 mono PCM 디코드 + 로컬 에너지 기반 온셋 검출/BPM 추정(외부 라이브러리 없음)
+  → 실측 BPM/Confidence/온셋 수를 Claude가 추정한 blueprint.bpm_range와 나란히 표시
+    (실측이 추정을 조용히 덮어쓰지 않음)
+PRODUCTION › TIMELINE 탭(신규):
+  → CLIPS/SIGNALS/EDIT DECISIONS/BEAT 4개 트랙을 줌 가능한 가로 타임라인에 표시
+  → 트랙별 표시/숨김 체크박스, 클립 오른쪽 가장자리 드래그로 씬 길이(duration_sec) 트림
+    → 이후 씬들이 자동으로 재배치됨 (씬 순서 재배열은 지원하지 않음)
+```
+
+Beat Analyzer는 ffmpeg `aevalsrc`로 합성한 120 BPM/90 BPM 클릭 트랙으로 정확도를 검증했고(둘 다 오차 1 BPM 이내로 정확히 검출), 완전 무음에서는 BPM을 산출하지 않고 정직하게 "산출 안 됨"을 반환하는 것도 확인했다. Timeline 드래그 트림은 Playwright로 실제 마우스 드래그 후 페이지를 하드 리로드해 SQLite에 실제로 저장됐는지까지 확인했다 — 이 검증 과정에서 무음 온셋 오검출 버그와 트림 저장 시 stale closure로 조용히 저장 안 되던 버그를 각각 발견해 수정했다. 자세한 내용은 `V3_1_STATUS.md`의 "V3.2 나머지 범위 — Timeline UI + Beat Sync" 섹션과 `V32_TIMELINE_BEATSYNC_PLAN.md` 참고.
+
 ## Phase 4 워크플로우 — Analytics / Channel DNA (실제 동작 확인됨)
 
 ```
@@ -148,6 +163,7 @@ Google Flow/Generic 프롬프트는 Higgsfield의 `prompt_pack`과 완전히 분
 | 프롬프트 빌더 | `lib/prompts/{trendResearch,conceptLab,hookEngine,promptStudio,audioDirector,captionEngine,effectDirector,publishPack,autoEditDirector}.js` |
 | 채점 로직 | `lib/scoring.js` — Channel Fit Score, Today Top3 랭킹, Higgsfield 모델 카탈로그. `lib/media/hookDetector.js` — Hook Readiness 투명 공식 |
 | 미디어/렌더 | `lib/media/{paths,ffprobe,technicalValidation,signalAnalysis,keyframes,analyzeClip,timelineMap}.js`, `lib/render/{manifest,ffmpegCompiler,runner}.js`(Render Manifest → FFmpeg 인자 배열 → 실행) |
+| Beat Sync | `lib/audio/pcmDecode.js`(ffmpeg → mono f32le PCM), `lib/audio/beatAnalyzer.js`(에너지 기반 온셋 검출 + IOI 히스토그램 BPM 추정 — 외부 라이브러리 없음) |
 | Analytics | `lib/analytics/channelDna.js` — 임계값 게이트(≥3건), Best-X 그룹 평균, Format Fatigue, Prompt Library 파생 |
 
 Claude 호출은 항상 구조화된 JSON 스키마를 요청하고, 파싱 실패 시 1회 자동 재시도(validation feedback 포함)한다. Trend Radar 조사에만 `WebSearch`/`WebFetch` 도구 접근을 허용하고, 나머지(Concept/Hook/Prompt 생성)는 도구 접근 없이 순수 텍스트 생성만 수행한다.

@@ -14,8 +14,10 @@ import {
   listEditPlansByProduction,
   getPerformanceRecord,
   listVideoPromptsByProduction,
+  getLatestBeatAnalysis,
   updateProduction,
 } from '../../../../lib/db/repo';
+import { buildGlobalSignalMap } from '../../../../lib/media/timelineMap';
 
 export async function GET(_req, { params }) {
   const production = getProduction(params.id);
@@ -33,6 +35,8 @@ export async function GET(_req, { params }) {
   const editPlans = listEditPlansByProduction(production.id);
   const performance = getPerformanceRecord(production.id);
   const videoPrompts = listVideoPromptsByProduction(production.id);
+  const latestBeatAnalysis = getLatestBeatAnalysis(production.id);
+  const signalMap = buildGlobalSignalMap(production.storyboard, mediaAnalyses);
   return NextResponse.json({
     production,
     concept,
@@ -48,6 +52,8 @@ export async function GET(_req, { params }) {
     editPlans,
     performance,
     videoPrompts,
+    latestBeatAnalysis,
+    signalMap,
   });
 }
 

@@ -1,10 +1,32 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import CopyButton from '../../../components/CopyButton';
 import { VIDEO_PROVIDERS, GENERATION_MODES, AUDIO_INTENTS, INGREDIENT_TYPES } from '../../../lib/video/types';
 
-const TABS = ['OVERVIEW', 'HOOK', 'PROMPTS', 'ASSETS', 'ANALYZE', 'AUTO EDIT', 'AUDIO', 'CAPTIONS', 'EFFECTS', 'RENDER', 'PUBLISH', 'PERFORMANCE'];
+const TABS = ['OVERVIEW', 'HOOK', 'PROMPTS', 'ASSETS', 'ANALYZE', 'AUTO EDIT', 'TIMELINE', 'AUDIO', 'CAPTIONS', 'EFFECTS', 'RENDER', 'PUBLISH', 'PERFORMANCE'];
+
+const SIGNAL_COLORS = {
+  VISUAL_CHANGE_SIGNAL: '#f59e0b',
+  AUDIO_SILENCE_START: '#64748b',
+  AUDIO_SILENCE_END: '#64748b',
+  CLIP_BOUNDARY_START: '#d4d4d4',
+  CLIP_BOUNDARY_END: '#d4d4d4',
+};
+const EDIT_DECISION_COLORS = {
+  CUT: '#ef4444',
+  TRIM: '#f97316',
+  PUNCH_ZOOM: '#8b5cf6',
+  MICRO_ZOOM: '#a78bfa',
+  SPEED_RAMP: '#0ea5e9',
+  FREEZE: '#0891b2',
+  IMPACT_SFX_CUE: '#ec4899',
+  MUSIC_CUE: '#22c55e',
+  HOOK_TEXT_TIMING: '#eab308',
+  TRANSITION: '#6366f1',
+  LOOP_SUGGESTION: '#14b8a6',
+  PAYOFF_EMPHASIS: '#f43f5e',
+};
 const GENERATION_OUTCOMES = ['', 'SUCCESS', 'RETAKE', 'FAIL'];
 const FAILURE_REASONS = [
   'Character Drift', 'Motion Error', 'Physics Error', 'Camera Error', 'Object Error',
@@ -103,6 +125,19 @@ export default function ProductionWorkspacePage({ params }) {
 
   const [generatingAudio, setGeneratingAudio] = useState(false);
   const [audioGenResult, setAudioGenResult] = useState(null);
+  const [analyzingBeat, setAnalyzingBeat] = useState(false);
+  const [beatAnalyzeError, setBeatAnalyzeError] = useState(null);
+
+  const [pixelsPerSecond, setPixelsPerSecond] = useState(60);
+  const [showSignalsTrack, setShowSignalsTrack] = useState(true);
+  const [showEditDecisionsTrack, setShowEditDecisionsTrack] = useState(true);
+  const [showBeatTrack, setShowBeatTrack] = useState(true);
+  const [trimDrag, setTrimDrag] = useState(null);
+  const [liveDurations, setLiveDurations] = useState({});
+  const liveDurationsRef = useRef(liveDurations);
+  liveDurationsRef.current = liveDurations;
+  const bundleRef = useRef(bundle);
+  bundleRef.current = bundle;
 
   const [generatingCaptions, setGeneratingCaptions] = useState(false);
   const [captionGenResult, setCaptionGenResult] = useState(null);
@@ -151,6 +186,52 @@ export default function ProductionWorkspacePage({ params }) {
   useEffect(() => {
     setSelectedVideoPromptId(null);
   }, [videoProvider]);
+
+  useEffect(() => {
+    if (!trimDrag) return undefined;
+    function handleMove(e) {
+      const deltaSec = (e.clientX - trimDrag.startX) / pixelsPerSecond;
+      const newDuration = Math.max(1, Math.round((trimDrag.startDuration + deltaSec) * 10) / 10);
+      setLiveDurations((prev) => ({ ...prev, [trimDrag.sceneNumber]: newDuration }));
+    }
+    function handleUp() {
+      setTrimDrag((current) => {
+        if (current) commitTrim(current.sceneNumber);
+        return null;
+      });
+    }
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trimDrag, pixelsPerSecond]);
+
+  async function commitTrim(sceneNumber) {
+    // Reads from refs, not the closed-over state/props — this function is
+    // called from a window listener registered by an effect that only
+    // re-runs on [trimDrag, pixelsPerSecond] changes, so `liveDurations`/
+    // `bundle` captured directly here would be stale from drag-start time.
+    const finalDuration = liveDurationsRef.current[sceneNumber];
+    const currentBundle = bundleRef.current;
+    if (finalDuration == null || !currentBundle?.production?.storyboard) return;
+    const newStoryboard = currentBundle.production.storyboard.map((s) =>
+      s.scene_number === sceneNumber ? { ...s, duration_sec: finalDuration } : s
+    );
+    await fetch(`/api/production/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storyboard: newStoryboard }),
+    });
+    setLiveDurations((prev) => {
+      const next = { ...prev };
+      delete next[sceneNumber];
+      return next;
+    });
+    refresh();
+  }
 
   function refresh() {
     fetch(`/api/production/${id}`)
@@ -243,6 +324,18 @@ export default function ProductionWorkspacePage({ params }) {
       refresh();
     } finally {
       setGeneratingAudio(false);
+    }
+  }
+
+  async function handleAnalyzeBeat(assetId) {
+    setAnalyzingBeat(true);
+    setBeatAnalyzeError(null);
+    try {
+      const res = await post('/api/production/audio/analyze-beat', { productionId: id, assetId });
+      if (res?.error) setBeatAnalyzeError(res.error);
+      refresh();
+    } finally {
+      setAnalyzingBeat(false);
     }
   }
 
@@ -442,6 +535,8 @@ export default function ProductionWorkspacePage({ params }) {
     editPlans,
     performance,
     videoPrompts,
+    latestBeatAnalysis,
+    signalMap,
   } =
     bundle;
   if (!production) return <p className="text-sm text-red-500">Production을 찾을 수 없습니다.</p>;
@@ -1312,9 +1407,208 @@ export default function ProductionWorkspacePage({ params }) {
         </div>
       )}
 
+      {tab === 'TIMELINE' && (() => {
+        const effectiveStoryboard = (production.storyboard || []).map((s) => ({
+          ...s,
+          duration_sec: liveDurations[s.scene_number] ?? s.duration_sec,
+        }));
+        const totalDuration = effectiveStoryboard.reduce((sum, s) => sum + (s.duration_sec || 0), 0);
+        const timelineWidth = Math.max(400, totalDuration * pixelsPerSecond);
+        const rulerTicks = [];
+        for (let t = 0; t <= totalDuration; t += 2) rulerTicks.push(t);
+
+        let cursor = 0;
+        const clipBlocks = effectiveStoryboard.map((s) => {
+          const left = cursor * pixelsPerSecond;
+          const width = (s.duration_sec || 0) * pixelsPerSecond;
+          cursor += s.duration_sec || 0;
+          return { ...s, left, width };
+        });
+
+        return (
+          <div className="space-y-4">
+            {(!production.storyboard || production.storyboard.length === 0) && (
+              <p className="text-sm text-neutral-400">Storyboard가 없습니다. PROMPTS 탭에서 먼저 생성하세요.</p>
+            )}
+            <div className="card p-5 space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <p className="label">TIMELINE ({totalDuration.toFixed(1)}s)</p>
+                <div className="flex items-center gap-4 text-xs">
+                  <label className="flex items-center gap-1">
+                    <input type="checkbox" checked={showSignalsTrack} onChange={(e) => setShowSignalsTrack(e.target.checked)} />
+                    Signals
+                  </label>
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      checked={showEditDecisionsTrack}
+                      onChange={(e) => setShowEditDecisionsTrack(e.target.checked)}
+                    />
+                    Edit Decisions
+                  </label>
+                  <label className="flex items-center gap-1">
+                    <input type="checkbox" checked={showBeatTrack} onChange={(e) => setShowBeatTrack(e.target.checked)} />
+                    Beat
+                  </label>
+                  <label className="flex items-center gap-2">
+                    Zoom
+                    <input
+                      type="range"
+                      min="20"
+                      max="200"
+                      value={pixelsPerSecond}
+                      onChange={(e) => setPixelsPerSecond(Number(e.target.value))}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto border border-neutral-100 rounded-lg">
+                <div style={{ width: timelineWidth, minWidth: '100%' }} className="relative">
+                  {/* Ruler */}
+                  <div className="relative h-6 border-b border-neutral-100 text-[10px] text-neutral-400">
+                    {rulerTicks.map((t) => (
+                      <div key={t} className="absolute top-0 border-l border-neutral-200 pl-1" style={{ left: t * pixelsPerSecond }}>
+                        {t}s
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Clips track */}
+                  <div className="relative h-12 border-b border-neutral-100">
+                    {clipBlocks.map((c) => (
+                      <div
+                        key={c.scene_number}
+                        className="absolute top-1 h-10 bg-neutral-900 text-white rounded text-[10px] px-2 flex items-center overflow-hidden select-none"
+                        style={{ left: c.left, width: Math.max(c.width, 4) }}
+                        title={`Scene ${c.scene_number} — ${c.purpose}`}
+                      >
+                        <span className="truncate">
+                          Scene {c.scene_number} · {c.duration_sec.toFixed(1)}s
+                        </span>
+                        <div
+                          className="absolute right-0 top-0 h-full w-2 bg-accent cursor-ew-resize"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setTrimDrag({ sceneNumber: c.scene_number, startX: e.clientX, startDuration: c.duration_sec });
+                          }}
+                          title="드래그해서 길이 조절 (Trim)"
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Signals track */}
+                  {showSignalsTrack && (
+                    <div className="relative h-6 border-b border-neutral-100 bg-neutral-50">
+                      {(signalMap || [])
+                        .filter((s) => !s.type.startsWith('CLIP_BOUNDARY'))
+                        .map((s) => (
+                          <div
+                            key={s.id}
+                            className="absolute top-0 w-[2px] h-full"
+                            style={{ left: s.timestamp_sec * pixelsPerSecond, backgroundColor: SIGNAL_COLORS[s.type] || '#94a3b8' }}
+                            title={`${s.type} · ${s.strength} · ${s.source} (${s.timestamp_sec}s)`}
+                          />
+                        ))}
+                    </div>
+                  )}
+
+                  {/* Edit decisions track */}
+                  {showEditDecisionsTrack && (
+                    <div className="relative h-6 border-b border-neutral-100">
+                      {(latestEditPlan?.decisions || []).map((d, i) => (
+                        <div
+                          key={i}
+                          className="absolute top-1 h-4 rounded-sm opacity-80"
+                          style={{
+                            left: d.timestamp * pixelsPerSecond,
+                            width: Math.max((d.endTimestamp - d.timestamp) * pixelsPerSecond, 3),
+                            backgroundColor: EDIT_DECISION_COLORS[d.type] || '#94a3b8',
+                          }}
+                          title={`${d.type} (${d.track}) · ${d.confidence} · ${d.reason}`}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Beat track */}
+                  {showBeatTrack && (
+                    <div className="relative h-5 bg-neutral-50">
+                      {latestBeatAnalysis?.onset_times?.map((t, i) => (
+                        <div
+                          key={i}
+                          className="absolute top-0 w-px h-full bg-accent2"
+                          style={{ left: t * pixelsPerSecond }}
+                          title={`Beat onset ${t}s`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <p className="text-xs text-neutral-400">
+                CLIPS 트랙의 오른쪽 파란 손잡이를 드래그하면 해당 씬의 길이(duration_sec)가 변경되고 이후 씬들의 위치가 자동으로 재배치됩니다(순서 변경은 지원하지 않음). SIGNALS는 실측 신호, EDIT DECISIONS는 최신 Auto Edit Plan, BEAT는 AUDIO 탭에서 분석한 실측 온셋입니다.
+                {!latestBeatAnalysis && ' BEAT 트랙이 비어있다면 AUDIO 탭에서 먼저 Beat 분석을 실행하세요.'}
+              </p>
+            </div>
+          </div>
+        );
+      })()}
+
       {tab === 'AUDIO' && (
         <div className="space-y-4">
           <GenPanel label="GENERATE AUDIO PLAN" onClick={handleGenerateAudio} loading={generatingAudio} result={audioGenResult} />
+
+          {assets?.some((a) => a.type === 'MUSIC') && (
+            <div className="card p-5 space-y-2">
+              <p className="label">BEAT ANALYZER (로컬 실측 — Claude 추정 아님)</p>
+              <div className="flex flex-wrap gap-2">
+                {assets
+                  .filter((a) => a.type === 'MUSIC')
+                  .map((a) => (
+                    <button
+                      key={a.id}
+                      className="btn-secondary text-xs"
+                      onClick={() => handleAnalyzeBeat(a.id)}
+                      disabled={analyzingBeat}
+                    >
+                      {analyzingBeat ? 'ANALYZING...' : `ANALYZE BEAT — ${a.original_filename || a.id}`}
+                    </button>
+                  ))}
+              </div>
+              {beatAnalyzeError && <p className="text-sm text-red-600">오류: {beatAnalyzeError}</p>}
+              {latestBeatAnalysis && (
+                <div className="grid md:grid-cols-4 gap-2 text-sm mt-2">
+                  <div>
+                    <span className="text-neutral-400 text-xs">실측 BPM</span>
+                    <p className="font-semibold">{latestBeatAnalysis.bpm ?? '산출 안 됨'}</p>
+                  </div>
+                  <div>
+                    <span className="text-neutral-400 text-xs">Confidence</span>
+                    <p>
+                      <ConfidenceBadge value={latestBeatAnalysis.confidence} />
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-neutral-400 text-xs">감지된 온셋 수</span>
+                    <p className="font-semibold">{latestBeatAnalysis.onset_count}</p>
+                  </div>
+                  <div>
+                    <span className="text-neutral-400 text-xs">분석 길이</span>
+                    <p className="font-semibold">{latestBeatAnalysis.duration_sec}s</p>
+                  </div>
+                  {audioPlan?.blueprint?.bpm_range && (
+                    <div className="md:col-span-4 text-xs text-neutral-400">
+                      Claude 추정 BPM 범위: {audioPlan.blueprint.bpm_range} (실측값과 다를 수 있음 — 실측이 우선함)
+                    </div>
+                  )}
+                  <p className="md:col-span-4 text-xs text-neutral-400">{latestBeatAnalysis.method}</p>
+                </div>
+              )}
+            </div>
+          )}
 
           {audioPlan?.blueprint && Object.keys(audioPlan.blueprint).length > 0 && (
             <div className="card p-5 space-y-2">

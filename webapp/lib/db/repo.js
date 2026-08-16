@@ -933,3 +933,43 @@ export function listIngredientAssets(productionId) {
     .all(productionId)
     .map(parseAssetRow);
 }
+
+// ---------- Beat Analysis ----------
+export function insertBeatAnalysis(productionId, assetId, result) {
+  const db = getDb();
+  const id = genId('beat');
+  db.prepare(
+    `INSERT INTO beat_analyses (id, created_at, production_id, asset_id, bpm, confidence, onset_times, onset_count, method, duration_sec)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`
+  ).run(
+    id,
+    now(),
+    productionId,
+    assetId,
+    result.bpm,
+    result.confidence,
+    JSON.stringify(result.onsetTimes || []),
+    result.onsetCount,
+    result.method,
+    result.durationSec
+  );
+  return getBeatAnalysis(id);
+}
+
+export function getBeatAnalysis(id) {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM beat_analyses WHERE id = ?').get(id);
+  return row ? parseBeatAnalysisRow(row) : null;
+}
+
+export function getLatestBeatAnalysis(productionId) {
+  const db = getDb();
+  const row = db
+    .prepare('SELECT * FROM beat_analyses WHERE production_id = ? ORDER BY created_at DESC LIMIT 1')
+    .get(productionId);
+  return row ? parseBeatAnalysisRow(row) : null;
+}
+
+function parseBeatAnalysisRow(row) {
+  return { ...row, onset_times: safeParse(row.onset_times, []) };
+}
