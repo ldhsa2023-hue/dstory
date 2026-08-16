@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #faf9f6;
+  color: #161616;
+}
+
+.card {
+  @apply bg-white border border-neutral-200 rounded-xl shadow-sm;
+}
+
+.btn {
+  @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-colors;
+}
+
+.btn-primary {
+  @apply btn bg-accent text-white hover:bg-orange-700;
+}
+
+.btn-secondary {
+  @apply btn bg-neutral-900 text-white hover:bg-neutral-700;
+}
+
+.btn-ghost {
+  @apply btn bg-neutral-100 text-neutral-700 hover:bg-neutral-200;
+}
+
+.input {
+  @apply w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent;
+}
+
+.label {
+  @apply block text-xs font-semibold text-neutral-500 mb-1 uppercase tracking-wide;
+}
+
+.badge {
+  @apply inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold;
+}
+
+pre.codebox {
+  @apply bg-neutral-900 text-neutral-100 rounded-lg p-4 text-xs overflow-x-auto whitespace-pre-wrap;
+}

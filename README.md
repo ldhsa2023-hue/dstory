@@ -25,12 +25,26 @@ dstory/
 │   ├── production_tracker.csv
 │   ├── performance_analytics.csv
 │   └── trend_tracker.csv
-└── templates/                   # 대본/후킹 템플릿
-    ├── shorts_script_template.md
-    └── longform_script_template.md
+├── templates/                    # 대본/후킹 템플릿
+│   ├── shorts_script_template.md
+│   └── longform_script_template.md
+└── webapp/                       # 로컬 실행 웹앱 (1~3단계를 실제로 수행하는 도구)
+    └── README.md                 # 실행 방법: cd webapp && npm install && npm run dev
 ```
 
-## 사용 순서
+## 로컬 웹앱으로 바로 실행하기
+
+문서/템플릿을 손으로 옮기지 않고 실제로 사용하려면 `webapp/` 을 로컬에서 실행한다.
+
+```bash
+cd webapp
+npm install
+npm run dev
+```
+
+`http://localhost:3000` 에서 ① 트렌드 조사·분석·기획 → ② 씬/삽화 생성용 GPT 프롬프트 → ③ Higgsfield 프롬프트·가이드 생성까지 한 흐름으로 이어진다. 자세한 내용은 `webapp/README.md` 참고.
+
+## 사용 순서 (문서 기반 수동 운영 시)
 
 1. `strategy/01-genre-analysis.md` 로 어떤 콘텐츠 장르에 집중할지 판단한다.
 2. `strategy/02-recommended-strategy.md` 의 로드맵에 따라 시리즈를 선정한다.
