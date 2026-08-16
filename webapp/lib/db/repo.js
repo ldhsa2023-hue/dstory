@@ -259,7 +259,7 @@ export function updateProduction(id, patch) {
   if (!current) return null;
   const merged = { ...current, ...patch };
   db.prepare(
-    `UPDATE productions SET title = ?, status = ?, format = ?, target_duration = ?, storyboard = ?, hook_id = ?, updated_at = ?
+    `UPDATE productions SET title = ?, status = ?, format = ?, target_duration = ?, storyboard = ?, hook_id = ?, video_provider = ?, updated_at = ?
      WHERE id = ?`
   ).run(
     merged.title,
@@ -268,6 +268,7 @@ export function updateProduction(id, patch) {
     merged.target_duration,
     JSON.stringify(merged.storyboard || []),
     merged.hook_id || null,
+    merged.video_provider || 'higgsfield',
     now(),
     id
   );
@@ -577,7 +578,11 @@ export function deleteAsset(id) {
 }
 
 function parseAssetRow(row) {
-  return { ...row, commercial_use_confirmed: Boolean(row.commercial_use_confirmed) };
+  return {
+    ...row,
+    commercial_use_confirmed: Boolean(row.commercial_use_confirmed),
+    is_ingredient: Boolean(row.is_ingredient),
+  };
 }
 
 // ---------- Render Jobs ----------
@@ -823,4 +828,65 @@ export function listRecentProductionsWithDetail(limit = 5) {
   const db = getDb();
   const rows = db.prepare('SELECT * FROM productions ORDER BY created_at DESC LIMIT ?').all(limit);
   return rows.map(parseProductionRow);
+}
+
+// ---------- Video Prompts (per-provider prompt compilations) ----------
+// Not merged with prompt_packs (Higgsfield's table) — each provider's
+// output is stored separately so switching providers never overwrites
+// another provider's result.
+export function insertVideoPrompts(productionId, provider, generationMode, globalVisualLock, clips) {
+  const db = getDb();
+  const id = genId('vprompt');
+  const payload = { global_visual_lock: globalVisualLock || '', clips: clips || [] };
+  db.prepare(
+    'INSERT INTO video_prompts (id, created_at, production_id, provider, generation_mode, clips, version) VALUES (?,?,?,?,?,?,1)'
+  ).run(id, now(), productionId, provider, generationMode, JSON.stringify(payload));
+  return getVideoPromptsById(id);
+}
+
+export function getVideoPromptsById(id) {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM video_prompts WHERE id = ?').get(id);
+  return row ? parseVideoPromptsRow(row) : null;
+}
+
+export function getLatestVideoPrompts(productionId, provider) {
+  const db = getDb();
+  const row = db
+    .prepare('SELECT * FROM video_prompts WHERE production_id = ? AND provider = ? ORDER BY created_at DESC LIMIT 1')
+    .get(productionId, provider);
+  return row ? parseVideoPromptsRow(row) : null;
+}
+
+export function listVideoPromptsByProduction(productionId) {
+  const db = getDb();
+  return db
+    .prepare('SELECT * FROM video_prompts WHERE production_id = ? ORDER BY created_at DESC')
+    .all(productionId)
+    .map(parseVideoPromptsRow);
+}
+
+function parseVideoPromptsRow(row) {
+  const payload = safeParse(row.clips, { global_visual_lock: '', clips: [] });
+  return { ...row, global_visual_lock: payload.global_visual_lock || '', clips: payload.clips || [] };
+}
+
+// ---------- Asset Ingredient metadata ----------
+export function setAssetIngredient(assetId, { isIngredient, ingredientName, ingredientType }) {
+  const db = getDb();
+  db.prepare('UPDATE assets SET is_ingredient = ?, ingredient_name = ?, ingredient_type = ? WHERE id = ?').run(
+    isIngredient ? 1 : 0,
+    ingredientName || null,
+    ingredientType || null,
+    assetId
+  );
+  return getAsset(assetId);
+}
+
+export function listIngredientAssets(productionId) {
+  const db = getDb();
+  return db
+    .prepare('SELECT * FROM assets WHERE production_id = ? AND is_ingredient = 1')
+    .all(productionId)
+    .map(parseAssetRow);
 }

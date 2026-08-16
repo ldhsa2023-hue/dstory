@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getConcept, updateConceptStatus, insertProduction } from '../../../../lib/db/repo';
+import { getConcept, updateConceptStatus, insertProduction, updateProduction, getChannelProfile } from '../../../../lib/db/repo';
 
 export async function POST(req) {
   const body = await req.json().catch(() => ({}));
@@ -9,7 +9,7 @@ export async function POST(req) {
   if (!concept) return NextResponse.json({ error: 'concept not found' }, { status: 404 });
 
   updateConceptStatus(concept.id, 'approved');
-  const production = insertProduction({
+  let production = insertProduction({
     concept_id: concept.id,
     title: concept.title,
     status: 'APPROVED',
@@ -17,6 +17,12 @@ export async function POST(req) {
     target_duration: concept.length_sec,
     storyboard: [],
   });
+
+  const channelProfile = getChannelProfile();
+  const preferredProvider = channelProfile?.preferredVideoProvider;
+  if (preferredProvider && preferredProvider !== 'higgsfield') {
+    production = updateProduction(production.id, { video_provider: preferredProvider });
+  }
 
   return NextResponse.json(production, { status: 201 });
 }

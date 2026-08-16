@@ -1,4 +1,4 @@
-# Viral Studio V3.1 (Phase 1-4) + V3.2 Phase A
+# Viral Studio V3.1 (Phase 1-4) + V3.2 Phase A + Google Flow Provider Patch
 
 로컬에서 실행되는 AI 콘텐츠 제작 운영 시스템. Trend Intelligence → Concept → Hook → ChatGPT/Higgsfield Prompt Pack까지, 실제 Claude Code CLI를 AI 백엔드로 사용해 자동 생성한다. 이미지·영상 생성 자체(ChatGPT/Higgsfield 호출)는 자동화하지 않으며, 생성된 프롬프트를 사용자가 직접 복사해 사용한다.
 
@@ -100,11 +100,33 @@ CHANNEL DNA 페이지 (신규 상단 메뉴):
 
 이 로컬 환경에는 실제 게시 성과가 없으므로, `webapp/scripts/seed-phase4-test-data.mjs`로 명확히 "[TEST]"라고 표시된 테스트 Production 2개(성과 포함)를 만들어 "데이터 부족" 상태와 "충분한 데이터" 상태 양쪽을 모두 검증했다. 자세한 내용은 `V3_1_STATUS.md`.
 
+## Google Flow / Veo Video Provider 워크플로우 (실제 동작 확인됨)
+
+```
+PRODUCTION › PROMPTS 탭: VIDEO GENERATION PROVIDER에서 Higgsfield / Google Flow / Generic 선택
+  → Higgsfield를 최소 1회 먼저 실행해 Storyboard를 확보해야 함 (모든 Provider가 이 Storyboard를 공유 —
+    Story를 다시 생성하지 않음. Storyboard 없이 Google Flow/Generic 생성 시도 시 400 에러로 안내)
+  → Google Flow 선택 시 Generation Mode(Auto Recommend / Image→Video / Start+End Frame /
+    Ingredients / Text→Video) + Audio Intent 선택 후 GENERATE
+  → 클립별로 recommended_mode + mode_reason(Claude가 스토리 맥락을 보고 판단한 근거 서술),
+    Start/End Frame Prompt + Motion Bridge Prompt(모드가 start-end-frame일 때) 또는
+    단일 Flow Prompt(image-to-video/text-to-video일 때), Continuity Notes, Negative
+    Constraints, Complexity Warning을 표시
+  → 각 프롬프트를 COPY해서 Google Flow/Veo에 직접 붙여넣어 사용 (자동 업로드/실행 없음)
+PRODUCTION › ASSETS 탭: REFERENCE_IMAGE/GENERATED_IMAGE에 Ingredient 체크 + 이름 + 타입
+  (CHARACTER/FOOD/OBJECT/...) 태깅 → Ingredients 모드로 생성 시 해당 이름이 프롬프트
+  컨텍스트로 전달되어 클립의 ingredients_used에 실제로 반영됨 (하드코딩이 아님)
+SETTINGS 페이지: Default Video Provider 지정 시 새로 승인되는 Production에 자동 반영
+```
+
+Google Flow/Generic 프롬프트는 Higgsfield의 `prompt_pack`과 완전히 분리된 `video_prompts` 테이블에 provider별로 독립 저장되며, `/api/production/prompts/generate`(Higgsfield 전용 경로)는 이 패치에서 한 줄도 수정하지 않았다 — 자세한 검증 내역은 `V3_1_STATUS.md`의 "Google Flow / Veo Video Provider Integration Patch" 섹션 참고.
+
 ## 아키텍처
 
 | 구성 | 내용 |
 |---|---|
-| DB | `node:sqlite` (`data/viral-studio.sqlite`, git 추적 제외) — ChannelProfile, ResearchRun, Trend, Concept, Hook, Production, PromptPack, AudioPlan, CaptionTrack, EffectTrack, PublishPack, Asset, RenderJob, MediaAnalysis, EditPlan, PerformanceRecord |
+| DB | `node:sqlite` (`data/viral-studio.sqlite`, git 추적 제외) — ChannelProfile, ResearchRun, Trend, Concept, Hook, Production, PromptPack, AudioPlan, CaptionTrack, EffectTrack, PublishPack, Asset, RenderJob, MediaAnalysis, EditPlan, PerformanceRecord, VideoPrompts |
+| Video Provider | `lib/video/types.js`(공유 vocabulary), `lib/video/providerOrchestrator.js`(google-flow/generic만 라우팅, higgsfield는 기존 경로 그대로), `lib/video/providers/{googleFlowCompiler,genericCompiler}.js`(순수 프롬프트 빌더 함수) |
 | AI Engine | `lib/ai/engine.js` — `ClaudeCLIEngine`(기본, `claude -p --output-format json` subprocess) / `ManualEngine`(fallback, 프롬프트만 생성) |
 | Visual Provider | `lib/ai/visualProvider.js` — `ClaudeVisualProvider`(`claude -p --allowedTools Read`로 실제 이미지 판독) / `ManualVisualProvider`(fallback) |
 | 프롬프트 빌더 | `lib/prompts/{trendResearch,conceptLab,hookEngine,promptStudio,audioDirector,captionEngine,effectDirector,publishPack,autoEditDirector}.js` |

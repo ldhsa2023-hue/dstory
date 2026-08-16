@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import CopyButton from '../../../components/CopyButton';
+import { VIDEO_PROVIDERS, GENERATION_MODES, AUDIO_INTENTS, INGREDIENT_TYPES } from '../../../lib/video/types';
 
 const TABS = ['OVERVIEW', 'HOOK', 'PROMPTS', 'ASSETS', 'ANALYZE', 'AUTO EDIT', 'AUDIO', 'CAPTIONS', 'EFFECTS', 'RENDER', 'PUBLISH', 'PERFORMANCE'];
 const GENERATION_OUTCOMES = ['', 'SUCCESS', 'RETAKE', 'FAIL'];
@@ -91,6 +92,12 @@ export default function ProductionWorkspacePage({ params }) {
   const [generatingPrompts, setGeneratingPrompts] = useState(false);
   const [promptGenResult, setPromptGenResult] = useState(null);
 
+  const [videoProvider, setVideoProvider] = useState('higgsfield');
+  const [generationMode, setGenerationMode] = useState('auto');
+  const [audioIntent, setAudioIntent] = useState('NATURAL_ONLY');
+  const [generatingVideoPrompts, setGeneratingVideoPrompts] = useState(false);
+  const [videoPromptGenResult, setVideoPromptGenResult] = useState(null);
+
   const [generatingAudio, setGeneratingAudio] = useState(false);
   const [audioGenResult, setAudioGenResult] = useState(null);
 
@@ -133,6 +140,10 @@ export default function ProductionWorkspacePage({ params }) {
   useEffect(() => {
     if (bundle?.performance) setPerfForm(bundle.performance);
   }, [bundle?.performance]);
+
+  useEffect(() => {
+    if (bundle?.production?.video_provider) setVideoProvider(bundle.production.video_provider);
+  }, [bundle?.production?.video_provider]);
 
   function refresh() {
     fetch(`/api/production/${id}`)
@@ -178,6 +189,24 @@ export default function ProductionWorkspacePage({ params }) {
       refresh();
     } finally {
       setGeneratingPrompts(false);
+    }
+  }
+
+  async function handleGenerateVideoPrompts() {
+    setGeneratingVideoPrompts(true);
+    setVideoPromptGenResult(null);
+    try {
+      setVideoPromptGenResult(
+        await post('/api/production/video-prompts/generate', {
+          productionId: id,
+          provider: videoProvider,
+          generationMode,
+          audioIntent,
+        })
+      );
+      refresh();
+    } finally {
+      setGeneratingVideoPrompts(false);
     }
   }
 
@@ -271,6 +300,15 @@ export default function ProductionWorkspacePage({ params }) {
 
   async function handleDeleteAsset(assetId) {
     await fetch(`/api/production/assets/${assetId}`, { method: 'DELETE' });
+    refresh();
+  }
+
+  async function handleSetIngredient(assetId, patch) {
+    await fetch(`/api/production/assets/${assetId}/ingredient`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
     refresh();
   }
 
@@ -378,11 +416,13 @@ export default function ProductionWorkspacePage({ params }) {
     mediaAnalyses,
     editPlans,
     performance,
+    videoPrompts,
   } =
     bundle;
   if (!production) return <p className="text-sm text-red-500">Production을 찾을 수 없습니다.</p>;
   const latestJob = renderJobs?.[0];
   const latestEditPlan = editPlans?.[0];
+  const currentVideoPrompt = videoPrompts?.find((vp) => vp.provider === videoProvider);
 
   return (
     <div className="space-y-6">
@@ -491,84 +531,252 @@ export default function ProductionWorkspacePage({ params }) {
               먼저 HOOK 탭에서 Hook을 선택하세요. Hook 없이도 생성은 가능하지만 품질이 떨어집니다.
             </div>
           )}
-          <div className="card p-5 space-y-3">
-            <div className="flex gap-2">
-              {HIGGSFIELD_MODES.map((m) => (
+
+          <div className="card p-5 space-y-2">
+            <p className="label">VIDEO GENERATION PROVIDER</p>
+            <div className="flex gap-2 flex-wrap">
+              {VIDEO_PROVIDERS.map((p) => (
                 <button
-                  key={m}
-                  onClick={() => setHiggsfieldMode(m)}
+                  key={p.id}
+                  onClick={() => setVideoProvider(p.id)}
                   className={`px-3 py-1 rounded-full text-xs font-semibold border ${
-                    higgsfieldMode === m ? 'bg-accent text-white border-accent' : 'border-neutral-300 text-neutral-600'
+                    videoProvider === p.id ? 'bg-accent text-white border-accent' : 'border-neutral-300 text-neutral-600'
                   }`}
                 >
-                  {m}
+                  {p.name}
                 </button>
               ))}
             </div>
-            <button className="btn-secondary" onClick={handleGeneratePrompts} disabled={generatingPrompts}>
-              {generatingPrompts ? 'GENERATING PROMPT PACK...' : 'GENERATE CHATGPT + HIGGSFIELD PROMPTS'}
-            </button>
-            {promptGenResult?.mode === 'template' && (
-              <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg p-3">
-                Claude CLI 미감지 — 프롬프트를 직접 실행하세요.
-                <pre className="codebox mt-2">{promptGenResult.prompt}</pre>
-              </div>
+            {videoProvider !== 'higgsfield' && production.storyboard?.length === 0 && (
+              <p className="text-xs text-amber-700">
+                ⚠ 아직 Storyboard가 없습니다. Higgsfield 프롬프트를 최소 1회 생성해야 Storyboard가 만들어집니다(모든
+                Provider가 이 Storyboard를 공유합니다 — Story를 다시 만들지 않습니다).
+              </p>
             )}
-            {promptGenResult?.mode === 'error' && <p className="text-sm text-red-600">오류: {promptGenResult.error}</p>}
           </div>
 
-          {promptPack?.global_visual_lock && (
-            <div className="card p-5">
-              <div className="flex items-center justify-between">
-                <p className="label">GLOBAL VISUAL LOCK</p>
-                <CopyButton text={promptPack.global_visual_lock} />
-              </div>
-              <p className="text-sm mt-2">{promptPack.global_visual_lock}</p>
-            </div>
-          )}
-
-          {promptPack?.image_prompts?.length > 0 && (
-            <div className="card p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="label">CHATGPT IMAGE PROMPTS</p>
-                <CopyButton
-                  text={promptPack.image_prompts.map((p) => `Scene ${p.scene_number}: ${p.prompt}`).join('\n\n')}
-                  label="COPY ALL"
-                />
-              </div>
-              {promptPack.image_prompts.map((p) => (
-                <div key={p.scene_number} className="border border-neutral-100 rounded-lg p-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="badge bg-neutral-900 text-white">Scene {p.scene_number}</span>
-                    <CopyButton text={p.prompt} />
-                  </div>
-                  <p className="text-sm">{p.prompt}</p>
+          {videoProvider === 'higgsfield' && (
+            <>
+              <div className="card p-5 space-y-3">
+                <div className="flex gap-2">
+                  {HIGGSFIELD_MODES.map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setHiggsfieldMode(m)}
+                      className={`px-3 py-1 rounded-full text-xs font-semibold border ${
+                        higgsfieldMode === m ? 'bg-accent text-white border-accent' : 'border-neutral-300 text-neutral-600'
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  ))}
                 </div>
-              ))}
-            </div>
+                <button className="btn-secondary" onClick={handleGeneratePrompts} disabled={generatingPrompts}>
+                  {generatingPrompts ? 'GENERATING PROMPT PACK...' : 'GENERATE CHATGPT + HIGGSFIELD PROMPTS'}
+                </button>
+                {promptGenResult?.mode === 'template' && (
+                  <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    Claude CLI 미감지 — 프롬프트를 직접 실행하세요.
+                    <pre className="codebox mt-2">{promptGenResult.prompt}</pre>
+                  </div>
+                )}
+                {promptGenResult?.mode === 'error' && <p className="text-sm text-red-600">오류: {promptGenResult.error}</p>}
+              </div>
+
+              {promptPack?.global_visual_lock && (
+                <div className="card p-5">
+                  <div className="flex items-center justify-between">
+                    <p className="label">GLOBAL VISUAL LOCK</p>
+                    <CopyButton text={promptPack.global_visual_lock} />
+                  </div>
+                  <p className="text-sm mt-2">{promptPack.global_visual_lock}</p>
+                </div>
+              )}
+
+              {promptPack?.image_prompts?.length > 0 && (
+                <div className="card p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="label">CHATGPT IMAGE PROMPTS</p>
+                    <CopyButton
+                      text={promptPack.image_prompts.map((p) => `Scene ${p.scene_number}: ${p.prompt}`).join('\n\n')}
+                      label="COPY ALL"
+                    />
+                  </div>
+                  {promptPack.image_prompts.map((p) => (
+                    <div key={p.scene_number} className="border border-neutral-100 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="badge bg-neutral-900 text-white">Scene {p.scene_number}</span>
+                        <CopyButton text={p.prompt} />
+                      </div>
+                      <p className="text-sm">{p.prompt}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {promptPack?.higgsfield_prompts?.length > 0 && (
+                <div className="card p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="label">HIGGSFIELD VIDEO PROMPTS ({promptPack.higgsfield_mode})</p>
+                    <CopyButton
+                      text={promptPack.higgsfield_prompts.map((p) => `Scene ${p.scene_number}: ${p.prompt}`).join('\n\n')}
+                      label="COPY ALL"
+                    />
+                  </div>
+                  {promptPack.higgsfield_prompts.map((p) => (
+                    <div key={p.scene_number} className="border border-neutral-100 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="badge bg-neutral-900 text-white">
+                          Scene {p.scene_number} · {p.duration_sec}s
+                        </span>
+                        <CopyButton text={p.prompt} />
+                      </div>
+                      <p className="text-sm">{p.prompt}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
-          {promptPack?.higgsfield_prompts?.length > 0 && (
-            <div className="card p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="label">HIGGSFIELD VIDEO PROMPTS ({promptPack.higgsfield_mode})</p>
-                <CopyButton
-                  text={promptPack.higgsfield_prompts.map((p) => `Scene ${p.scene_number}: ${p.prompt}`).join('\n\n')}
-                  label="COPY ALL"
-                />
+          {(videoProvider === 'google-flow' || videoProvider === 'generic') && (
+            <>
+              <div className="card p-5 space-y-3">
+                {videoProvider === 'google-flow' && (
+                  <>
+                    <p className="label">GENERATION MODE</p>
+                    <div className="flex gap-2 flex-wrap">
+                      {[{ id: 'auto', name: 'Auto Recommend' }, ...GENERATION_MODES].map((m) => (
+                        <button
+                          key={m.id}
+                          onClick={() => setGenerationMode(m.id)}
+                          className={`px-3 py-1 rounded-full text-xs font-semibold border ${
+                            generationMode === m.id ? 'bg-accent text-white border-accent' : 'border-neutral-300 text-neutral-600'
+                          }`}
+                        >
+                          {m.name}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="label mt-2">AUDIO INTENT</p>
+                    <div className="flex gap-2 flex-wrap">
+                      {AUDIO_INTENTS.map((a) => (
+                        <button
+                          key={a}
+                          onClick={() => setAudioIntent(a)}
+                          className={`px-3 py-1 rounded-full text-xs font-semibold border ${
+                            audioIntent === a ? 'bg-accent2 text-white border-accent2' : 'border-neutral-300 text-neutral-600'
+                          }`}
+                        >
+                          {a}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                <button
+                  className="btn-secondary"
+                  onClick={handleGenerateVideoPrompts}
+                  disabled={generatingVideoPrompts || production.storyboard?.length === 0}
+                >
+                  {generatingVideoPrompts ? 'GENERATING...' : `GENERATE ${videoProvider.toUpperCase()} PROMPTS`}
+                </button>
+                {videoPromptGenResult?.mode === 'template' && (
+                  <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    Claude CLI 미감지 — 프롬프트를 직접 실행하세요.
+                    <pre className="codebox mt-2">{videoPromptGenResult.prompt}</pre>
+                  </div>
+                )}
+                {videoPromptGenResult?.mode === 'error' && (
+                  <p className="text-sm text-red-600">오류: {videoPromptGenResult.error}</p>
+                )}
               </div>
-              {promptPack.higgsfield_prompts.map((p) => (
-                <div key={p.scene_number} className="border border-neutral-100 rounded-lg p-3">
-                  <div className="flex items-center justify-between mb-1">
+
+              {currentVideoPrompt?.global_visual_lock && (
+                <div className="card p-5">
+                  <div className="flex items-center justify-between">
+                    <p className="label">GLOBAL VISUAL LOCK</p>
+                    <CopyButton text={currentVideoPrompt.global_visual_lock} />
+                  </div>
+                  <p className="text-sm mt-2">{currentVideoPrompt.global_visual_lock}</p>
+                </div>
+              )}
+
+              {currentVideoPrompt?.clips?.map((c) => (
+                <div key={c.scene_number} className="card p-5 space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="badge bg-neutral-900 text-white">
-                      Scene {p.scene_number} · {p.duration_sec}s
+                      Clip {c.scene_number} · {c.duration_sec}s
                     </span>
-                    <CopyButton text={p.prompt} />
+                    {c.recommended_mode && (
+                      <span className="badge bg-accent2/10 text-accent2 text-[10px]">{c.recommended_mode}</span>
+                    )}
+                    {c.complexity_warning && <span className="badge bg-red-500 text-white text-[10px]">⚠ COMPLEXITY</span>}
                   </div>
-                  <p className="text-sm">{p.prompt}</p>
+                  {c.mode_reason && <p className="text-xs text-neutral-400">추천 근거: {c.mode_reason}</p>}
+                  {c.complexity_note && <p className="text-xs text-red-600">{c.complexity_note}</p>}
+
+                  <div className="grid md:grid-cols-2 gap-2 text-xs text-neutral-500">
+                    <p>Start State: {c.start_state}</p>
+                    <p>End State: {c.end_state}</p>
+                  </div>
+                  {c.ingredients_used?.length > 0 && (
+                    <p className="text-xs text-neutral-500">Ingredients: {c.ingredients_used.join(', ')}</p>
+                  )}
+
+                  {c.flow_prompt && (
+                    <div className="border border-neutral-100 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold text-neutral-500">FLOW PROMPT</span>
+                        <CopyButton text={c.flow_prompt} label="COPY PROMPT" />
+                      </div>
+                      <p className="text-sm">{c.flow_prompt}</p>
+                    </div>
+                  )}
+                  {c.start_frame_prompt && (
+                    <div className="border border-neutral-100 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold text-neutral-500">START FRAME PROMPT</span>
+                        <CopyButton text={c.start_frame_prompt} label="COPY START IMAGE PROMPT" />
+                      </div>
+                      <p className="text-sm">{c.start_frame_prompt}</p>
+                    </div>
+                  )}
+                  {c.end_frame_prompt && (
+                    <div className="border border-neutral-100 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold text-neutral-500">END FRAME PROMPT</span>
+                        <CopyButton text={c.end_frame_prompt} label="COPY END IMAGE PROMPT" />
+                      </div>
+                      <p className="text-sm">{c.end_frame_prompt}</p>
+                    </div>
+                  )}
+                  {c.motion_bridge_prompt && (
+                    <div className="border border-neutral-100 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold text-neutral-500">MOTION BRIDGE PROMPT</span>
+                        <CopyButton text={c.motion_bridge_prompt} />
+                      </div>
+                      <p className="text-sm">{c.motion_bridge_prompt}</p>
+                    </div>
+                  )}
+                  {/* Generic provider fields */}
+                  {c.subject && (
+                    <div className="border border-neutral-100 rounded-lg p-3 text-sm space-y-1">
+                      <p><span className="text-neutral-400">Subject:</span> {c.subject}</p>
+                      <p><span className="text-neutral-400">Action:</span> {c.action}</p>
+                      <p><span className="text-neutral-400">Camera:</span> {c.camera}</p>
+                      <p><span className="text-neutral-400">Lighting:</span> {c.lighting}</p>
+                      <p><span className="text-neutral-400">Environment:</span> {c.environment}</p>
+                    </div>
+                  )}
+                  {c.continuity_notes && <p className="text-xs text-neutral-400">Continuity: {c.continuity_notes}</p>}
+                  {c.negative_constraints?.length > 0 && (
+                    <p className="text-xs text-neutral-400">Negative: {c.negative_constraints.join(', ')}</p>
+                  )}
                 </div>
               ))}
-            </div>
+            </>
           )}
         </div>
       )}
@@ -655,12 +863,68 @@ export default function ProductionWorkspacePage({ params }) {
                       )}
                     </>
                   )}
+                  {(a.type === 'REFERENCE_IMAGE' || a.type === 'GENERATED_IMAGE') && (
+                    <div className="flex flex-wrap items-center gap-2 ml-auto">
+                      <label className="text-xs text-neutral-500 flex items-center gap-1">
+                        <input
+                          type="checkbox"
+                          checked={!!a.is_ingredient}
+                          onChange={(e) =>
+                            handleSetIngredient(a.id, {
+                              isIngredient: e.target.checked,
+                              ingredientName: a.ingredient_name,
+                              ingredientType: a.ingredient_type,
+                            })
+                          }
+                        />
+                        Ingredient
+                      </label>
+                      {a.is_ingredient && (
+                        <>
+                          <input
+                            className="input w-auto text-xs"
+                            placeholder="이름 (예: 주인공 캐릭터)"
+                            defaultValue={a.ingredient_name || ''}
+                            onBlur={(e) =>
+                              handleSetIngredient(a.id, {
+                                isIngredient: true,
+                                ingredientName: e.target.value,
+                                ingredientType: a.ingredient_type,
+                              })
+                            }
+                          />
+                          <select
+                            className="input w-auto text-xs"
+                            value={a.ingredient_type || ''}
+                            onChange={(e) =>
+                              handleSetIngredient(a.id, {
+                                isIngredient: true,
+                                ingredientName: a.ingredient_name,
+                                ingredientType: e.target.value,
+                              })
+                            }
+                          >
+                            <option value="">타입 선택</option>
+                            {INGREDIENT_TYPES.map((t) => (
+                              <option key={t} value={t}>
+                                {t}
+                              </option>
+                            ))}
+                          </select>
+                        </>
+                      )}
+                    </div>
+                  )}
                   <button className="btn-ghost text-xs text-red-600 shrink-0" onClick={() => handleDeleteAsset(a.id)}>
                     삭제
                   </button>
                 </div>
               ))}
             </div>
+            <p className="text-xs text-neutral-400 mt-2">
+              Ingredient로 표시한 이미지는 Google Flow의 &quot;Ingredients&quot; 모드에서 참조 소재로 사용됩니다(자동 업로드/전송 없음 — 이름과
+              설명만 프롬프트에 포함).
+            </p>
           </div>
         </div>
       )}

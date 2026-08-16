@@ -207,4 +207,64 @@ AUTO EDIT 탭에서 Auto Edit Director 실행 (intensity: BALANCED):
 
 ---
 
+## Google Flow / Veo Video Provider Integration Patch
+
+**상태: DONE (PATCH 1~3, 7 범위 — 세부 축소 사항은 `GOOGLE_FLOW_PROVIDER_PATCH_PLAN.md`의 "이번 세션에서 하지 않는 것" 참고)**
+
+절대 규칙 준수: `promptStudio.js`/`/api/production/prompts/generate`(Higgsfield 전용 경로)는 **한 줄도 수정하지 않았다**. 새 Provider(Google Flow, Generic)는 `lib/video/providerOrchestrator.js`를 통해서만 라우팅되며, Higgsfield는 이 오케스트레이터를 거치지 않고 기존 경로를 그대로 사용한다. 모든 Provider는 `production.storyboard`(Higgsfield 플로우로만 생성됨)를 **공유하는 단일 소스**로 사용하며, Story/Storyboard를 재생성하지 않는다 — storyboard가 비어 있으면 API가 400과 함께 "먼저 Higgsfield 플로우에서 Storyboard를 생성하라"는 안내를 반환한다(실제 curl로 확인).
+
+## 실제로 구현하고 검증한 것
+
+```
+DB: video_prompts 테이블 신설(provider별 별도 레코드, Higgsfield의 prompt_pack과 분리 저장),
+    assets.is_ingredient/ingredient_name/ingredient_type, productions.video_provider 컬럼 추가.
+
+/api/production/video-prompts/generate:
+  → storyboard 없는 production으로 호출 → 400 + 안내 메시지 확인 (실제 curl)
+  → provider=google-flow, generationMode=auto로 실제 Claude 호출 →
+    3개 클립 모두 recommended_mode + mode_reason(근거 서술) 포함해 생성됨을 확인.
+    Clip 2는 "회상→현재 시간 붕괴"라는 스토리 내용을 스스로 판단해 start-end-frame 모드를
+    추천하고 start_frame_prompt/end_frame_prompt/motion_bridge_prompt를 모두 채웠다
+    (Clip 1/3은 image-to-video로 추천 — 단일 지배적 액션이라는 이유를 명시).
+  → provider=generic으로 실제 Claude 호출 → subject/action/camera/lighting/environment
+    구조의 3개 클립 정상 생성 확인.
+  → 동일 production에서 google-flow와 generic을 각각 생성해도 video_prompts 테이블에
+    provider별로 독립 저장됨을 SQLite 직접 조회로 확인 (서로 덮어쓰지 않음).
+  → 같은 production에서 Higgsfield 프롬프트를 재생성해 기존 promptPack이 이전과 동일한
+    구조(mode/prompt/promptPack)로 반환됨을 확인 — Google Flow 패치가 Higgsfield 응답
+    형태에 전혀 영향을 주지 않음(회귀 없음).
+
+Ingredients 모드 실측:
+  → ASSETS 탭에서 REFERENCE_IMAGE를 업로드하고 Ingredient 체크박스 + 이름("주인공 왕") +
+    타입(CHARACTER) 태깅 → SQLite에 정상 저장 확인.
+  → generationMode=ingredients로 재생성 → 3개 클립 전부 ingredients_used에 "주인공 왕"이
+    포함되고 recommended_mode가 ingredients로 설정됨을 확인 (하드코딩이 아니라 Claude가
+    태깅된 ingredient 목록을 프롬프트 컨텍스트로 받아 실제로 반영한 결과).
+
+UI (Playwright 스크린샷으로 확인):
+  → PROMPTS 탭에 VIDEO GENERATION PROVIDER 선택기 추가. Higgsfield 선택 시 기존 UI가
+    변경 전과 동일하게 렌더링됨을 스크린샷으로 대조 확인.
+  → Google Flow 선택 시 Generation Mode/Audio Intent 선택기, 클립별 카드
+    (Start/End Frame Prompt, Motion Bridge Prompt, Flow Prompt, Continuity/Negative,
+    Complexity Warning 배지) 정상 렌더링 확인.
+  → ASSETS 탭에 이미지 자산 전용 Ingredient 체크박스/이름/타입 UI 추가 및 저장 확인.
+  → SETTINGS 페이지에 Default Video Provider 필드 추가 — 새 Production 승인 시
+    channel_profile.preferredVideoProvider가 higgsfield가 아니면 자동으로 반영됨
+    (approve/route.js에서 실측 확인).
+
+`next build` 클린 컴파일 확인. Playwright로 PROMPTS/ASSETS 탭 스크린샷 촬영해
+레이아웃과 데이터 바인딩을 육안 검증했다.
+```
+
+## 이번 패치에서 의도적으로 하지 않은 것 (정직하게 기록)
+
+`GOOGLE_FLOW_PROVIDER_PATCH_PLAN.md`에 명시된 대로 다음은 이번 세션 범위에서 제외했다:
+- Provider Performance/Learning 통계 페이지, Prompt Versioning(v1/v2/v3) + Winner Library 폴더, COMPARE PROMPTS 버튼
+- `.claude/agents/google-flow-specialist.md`, `.claude/skills/google-flow-prompt/`
+- Export 패치(google-flow-prompts.md/json 파일 내보내기), First-Run Wizard
+- 임베딩 기반 자동 Continuity 불일치 감지(현재는 Claude가 프롬프트 내에서 서술로만 continuity_notes를 판단)
+- Google/Higgsfield 로그인, API 호출, 브라우저 제어, 다운로드 등 일체의 자동화 — 모든 생성은 사용자가 프롬프트를 복사해 각 서비스에 수동으로 붙여넣는 방식 그대로 유지된다.
+
+---
+
 **VIRAL STUDIO V3.1 — PHASE 1, 2, 3, 4 READY. V3.2 — PHASE A READY.** V3.2의 나머지 범위(Timeline UI, Beat Sync, Edit Plan→렌더러 연동)만 아직 준비되지 않았다.

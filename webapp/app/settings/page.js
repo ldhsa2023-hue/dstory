@@ -25,6 +25,7 @@ const defaultProfile = {
   preferredVideoLength: 24,
   preferredClipCount: 3,
   higgsfieldPlan: 'Ultra',
+  preferredVideoProvider: 'higgsfield',
   preferredAspectRatio: '9:16',
   productionCapacityPerDay: 2,
   shortsPriority: 8,
@@ -171,6 +172,23 @@ export default function SettingsPage() {
           <div>
             <label className="label">Higgsfield Plan</label>
             <input className="input" value={profile.higgsfieldPlan} onChange={(e) => setProfile({ ...profile, higgsfieldPlan: e.target.value })} />
+          </div>
+        </div>
+        <div className="grid md:grid-cols-4 gap-4">
+          <div>
+            <label className="label">Default Video Provider</label>
+            <select
+              className="input"
+              value={profile.preferredVideoProvider}
+              onChange={(e) => setProfile({ ...profile, preferredVideoProvider: e.target.value })}
+            >
+              <option value="higgsfield">Higgsfield</option>
+              <option value="google-flow">Google Flow / Veo</option>
+              <option value="generic">Generic</option>
+            </select>
+            <p className="text-xs text-neutral-400 mt-1">
+              새 Production 생성 시 PROMPTS 탭에 기본 선택될 Provider입니다. 언제든 Production별로 바꿀 수 있습니다.
+            </p>
           </div>
         </div>
         <div className="grid md:grid-cols-4 gap-4">

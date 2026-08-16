@@ -231,6 +231,16 @@ function migrate(db) {
       subscribers_gained INTEGER,
       returning_viewers INTEGER
     );
+
+    CREATE TABLE IF NOT EXISTS video_prompts (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      production_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      generation_mode TEXT,
+      clips TEXT,
+      version INTEGER DEFAULT 1
+    );
   `);
 
   // Additive columns on pre-existing tables (node:sqlite has no
@@ -239,6 +249,11 @@ function migrate(db) {
   for (const stmt of [
     "ALTER TABLE assets ADD COLUMN generation_outcome TEXT",
     "ALTER TABLE assets ADD COLUMN failure_reason TEXT",
+    "ALTER TABLE assets ADD COLUMN is_ingredient INTEGER DEFAULT 0",
+    "ALTER TABLE assets ADD COLUMN ingredient_name TEXT",
+    "ALTER TABLE assets ADD COLUMN ingredient_type TEXT",
+    "ALTER TABLE assets ADD COLUMN generation_provider TEXT",
+    "ALTER TABLE productions ADD COLUMN video_provider TEXT DEFAULT 'higgsfield'",
   ]) {
     try {
       db.exec(stmt);

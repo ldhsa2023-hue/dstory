@@ -13,6 +13,7 @@ import {
   listMediaAnalysesByProduction,
   listEditPlansByProduction,
   getPerformanceRecord,
+  listVideoPromptsByProduction,
   updateProduction,
 } from '../../../../lib/db/repo';
 
@@ -31,6 +32,7 @@ export async function GET(_req, { params }) {
   const mediaAnalyses = listMediaAnalysesByProduction(production.id);
   const editPlans = listEditPlansByProduction(production.id);
   const performance = getPerformanceRecord(production.id);
+  const videoPrompts = listVideoPromptsByProduction(production.id);
   return NextResponse.json({
     production,
     concept,
@@ -45,6 +47,7 @@ export async function GET(_req, { params }) {
     mediaAnalyses,
     editPlans,
     performance,
+    videoPrompts,
   });
 }
 
