@@ -67,3 +67,41 @@ export function recommendModel({ needsCharacterConsistency, needsMultiShotCinema
   if (needsCharacterConsistency) return budgetPriority ? 'seedance_2_0_mini' : 'seedance_2_0';
   return budgetPriority ? 'seedance_2_0_mini' : 'seedance_2_0';
 }
+
+// ---------- V3.1 Channel Fit Score ----------
+// Channel Fit = trend's own fit signals (higgsfield/originality/series potential)
+// blended with the Channel Profile's stated priorities. Trend "popularity" alone
+// never drives this — see strategy spec section 66.
+export function computeChannelFitScore(trend, profile) {
+  const higgsfieldFit = clamp1to5(trend.higgsfield_fit);
+  const originality = clamp1to5(trend.originality_potential);
+  const series = clamp1to5(trend.series_potential);
+  const base = (higgsfieldFit + originality + series) / 15; // 0..1
+
+  const monetization = ((profile?.monetizationPriority ?? 5) / 10) || 0.5;
+  const formatBoost =
+    trend.format === 'longform' ? (profile?.longformPriority ?? 5) / 10 : (profile?.shortsPriority ?? 5) / 10;
+
+  const score = base * 0.6 + monetization * 0.2 + formatBoost * 0.2;
+  return Math.round(clamp(score, 0, 1) * 100);
+}
+
+// ---------- Today Top3 ----------
+const BET_LABELS = ['PRIMARY BET', 'GROWTH BET', 'EXPERIMENT BET'];
+
+export function rankTodayTop3(trends) {
+  const eligible = trends.filter((t) => t.status !== 'archived');
+  const ranked = [...eligible].sort((a, b) => combinedScore(b) - combinedScore(a));
+  return ranked.slice(0, 3).map((t, i) => ({ ...t, betLabel: BET_LABELS[i] }));
+}
+
+function combinedScore(t) {
+  return (Number(t.opportunity_score) || 0) * 0.5 + (Number(t.channel_fit_score) || 0) * 0.5;
+}
+
+function clamp1to5(n) {
+  return clamp(Number(n) || 3, 1, 5);
+}
+function clamp(n, min, max) {
+  return Math.min(max, Math.max(min, n));
+}

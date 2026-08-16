@@ -1,0 +1,112 @@
+import { DatabaseSync } from 'node:sqlite';
+import fs from 'fs';
+import path from 'path';
+
+const DATA_DIR = path.join(process.cwd(), 'data');
+const DB_PATH = path.join(DATA_DIR, 'viral-studio.sqlite');
+
+let db;
+
+export function getDb() {
+  if (db) return db;
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  db = new DatabaseSync(DB_PATH);
+  db.exec('PRAGMA journal_mode = WAL;');
+  migrate(db);
+  return db;
+}
+
+function migrate(db) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS channel_profile (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      data TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS research_runs (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      filters TEXT,
+      engine TEXT,
+      raw_prompt TEXT,
+      raw_output TEXT,
+      trend_count INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'completed'
+    );
+
+    CREATE TABLE IF NOT EXISTS trends (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      research_run_id TEXT,
+      name TEXT NOT NULL,
+      platform TEXT,
+      stage TEXT,
+      momentum TEXT,
+      evidence_confidence TEXT,
+      cross_platform_signal TEXT,
+      competition TEXT,
+      higgsfield_fit INTEGER,
+      originality_potential INTEGER,
+      series_potential INTEGER,
+      risk TEXT,
+      opportunity_score INTEGER,
+      channel_fit_score INTEGER,
+      status TEXT DEFAULT 'discovered',
+      raw_json TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS concepts (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      trend_id TEXT,
+      title TEXT,
+      logline TEXT,
+      why_now TEXT,
+      genre TEXT,
+      format TEXT,
+      length_sec INTEGER,
+      clip_count INTEGER,
+      differentiation TEXT,
+      status TEXT DEFAULT 'discovered',
+      raw_json TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS hooks (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      concept_id TEXT NOT NULL,
+      type TEXT,
+      hook_text TEXT,
+      narration TEXT,
+      scores TEXT,
+      selected INTEGER DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS productions (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      concept_id TEXT,
+      hook_id TEXT,
+      title TEXT,
+      status TEXT DEFAULT 'APPROVED',
+      format TEXT,
+      target_duration INTEGER,
+      storyboard TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS prompt_packs (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      production_id TEXT NOT NULL,
+      global_visual_lock TEXT,
+      image_prompts TEXT,
+      higgsfield_prompts TEXT,
+      higgsfield_mode TEXT
+    );
+  `);
+}

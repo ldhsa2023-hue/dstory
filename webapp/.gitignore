@@ -1,5 +1,7 @@
 node_modules/
 .next/
 data/settings.json
+data/*.sqlite
+data/*.sqlite-*
 .env.local
 npm-debug.log*

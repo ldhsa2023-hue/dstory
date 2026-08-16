@@ -1,12 +1,16 @@
-# dstory webapp — 로컬 콘텐츠 기획 도구
+# Viral Studio V3.1 (Phase 1)
 
-`../strategy`, `../prompts`, `../database`에 정리된 트렌드 대응 시스템을 실제로 사용할 수 있는 로컬 웹앱으로 구현한 것입니다. 3단계 흐름을 한 화면 세트에서 이어서 진행합니다.
+로컬에서 실행되는 AI 콘텐츠 제작 운영 시스템. Trend Intelligence → Concept → Hook → ChatGPT/Higgsfield Prompt Pack까지, 실제 Claude Code CLI를 AI 백엔드로 사용해 자동 생성한다. 이미지·영상 생성 자체(ChatGPT/Higgsfield 호출)는 자동화하지 않으며, 생성된 프롬프트를 사용자가 직접 복사해 사용한다.
 
-1. **바이럴 영상 조사·분석·기획** (`/trends`) — 트렌드를 기록하고, GPT 분석 프롬프트를 생성해 구조를 분석 → 우리 장르로 재해석 → 5개 기준으로 적합도를 채점(20점 이상 Fast-track).
-2. **씬/삽화 생성용 GPT 프롬프트** (`/scenes`) — 기획안을 샷 단위 대본(화면 묘사/내레이션/자막)으로 쪼개는 GPT 프롬프트를 생성하고 결과를 표로 저장.
-3. **Higgsfield 프롬프트·가이드 생성** (`/higgsfield`) — 샷 리스트를 Higgsfield `generate_video`에 바로 제출 가능한 JSON(model/prompt/aspect_ratio/duration/medias)과 단계별 사용 가이드로 변환.
+이 문서는 저장소 루트의 `IMPLEMENTATION_PLAN.md`(분석·아키텍처 결정·Phase 계획)와 함께 읽는다.
 
-## 실행 방법
+## 사전 준비
+
+1. **Node.js ≥ 22.5** — `node:sqlite`(experimental)를 사용하므로 필요.
+2. **Claude Code CLI** — 이 앱은 서버에서 `claude -p ...`를 subprocess로 호출한다. `claude`가 PATH에 있고 이미 로그인되어 있어야 한다 (`claude --version`으로 확인). 감지되지 않으면 각 화면은 자동 실행 대신 "복사해서 직접 실행" 모드로 전환된다.
+3. **FFmpeg / FFprobe** — Phase 3(Post Studio 렌더링)부터 필요. Phase 1에는 필요 없다.
+
+## 실행
 
 ```bash
 cd webapp
@@ -14,36 +18,41 @@ npm install
 npm run dev
 ```
 
-브라우저에서 `http://localhost:3000` 을 엽니다.
+`http://localhost:3000` → Settings에서 SYSTEM STATUS를 확인하고 Channel Profile을 입력한 뒤 시작한다.
 
-## OpenAI API 연동 (선택)
+## Phase 1 워크플로우 (실제 동작 확인됨)
 
-키가 없어도 모든 기능이 동작합니다 — 각 단계에서 만들어진 프롬프트를 복사해 ChatGPT에 직접 붙여넣고, 결과를 다시 앱에 붙여넣으면 됩니다("템플릿 모드").
+```
+SETTINGS: Channel Profile 저장
+  → TREND RADAR: SCAN NOW (Claude + WebSearch로 실시간 트렌드 조사, ~2-3분)
+  → TODAY: Opportunity×Channel Fit 상위 3개 확인
+  → CONCEPT LAB: 트렌드 선택 → GENERATE CONCEPTS (10개+, Originality Guard 적용)
+  → APPROVE → PRODUCTION 자동 생성
+  → PRODUCTION › HOOK 탭: GENERATE HOOKS (10개+) → 하나 SELECT
+  → PRODUCTION › PROMPTS 탭: STABLE/CINEMATIC/VIRAL 모드 선택 → GENERATE
+     → Global Visual Lock + 씬별 ChatGPT 이미지 프롬프트 + Higgsfield 영상 프롬프트(8초 클립 기준)
+  → 각 프롬프트를 COPY해서 ChatGPT / Higgsfield에 직접 붙여넣어 사용
+```
 
-`/settings` 에서 OpenAI API 키를 등록하면 "GPT로 바로 생성" 버튼이 실제 OpenAI API(`gpt-4o-mini`)를 호출해 결과를 자동으로 채워줍니다("라이브 모드"). 키는 `data/settings.json`(gitignore 처리됨)에 로컬로만 저장되고 외부로 전송되지 않습니다.
+## 아키텍처
 
-## 데이터 저장
-
-별도 DB 설치 없이 `data/*.json` 파일에 저장됩니다.
-
-| 파일 | 내용 |
+| 구성 | 내용 |
 |---|---|
-| `data/trends.json` | 기록된 트렌드 + 적합도 스코어 + 재해석안 |
-| `data/ideas.json` | 트렌드에서 전환되었거나 직접 입력한 기획 |
-| `data/scenes.json` | 저장된 샷 리스트(화면 묘사/내레이션/자막) |
-| `data/higgsfield_requests.json` | 생성된 Higgsfield 요청 JSON + 가이드 |
-| `data/settings.json` | (gitignore) OpenAI API 키 |
+| DB | `node:sqlite` (`data/viral-studio.sqlite`, git 추적 제외) — ChannelProfile, ResearchRun, Trend, Concept, Hook, Production, PromptPack |
+| AI Engine | `lib/ai/engine.js` — `ClaudeCLIEngine`(기본, `claude -p --output-format json` subprocess) / `ManualEngine`(fallback, 프롬프트만 생성) |
+| 프롬프트 빌더 | `lib/prompts/{trendResearch,conceptLab,hookEngine,promptStudio}.js` |
+| 채점 로직 | `lib/scoring.js` — Channel Fit Score, Today Top3 랭킹, Higgsfield 모델 카탈로그 |
 
-프로젝트를 다른 사람과 공유하기 전에 `data/settings.json`이 커밋되지 않았는지, 필요하면 `data/*.json`을 초기화(`[]`)했는지 확인하세요.
+Claude 호출은 항상 구조화된 JSON 스키마를 요청하고, 파싱 실패 시 1회 자동 재시도(validation feedback 포함)한다. Trend Radar 조사에만 `WebSearch`/`WebFetch` 도구 접근을 허용하고, 나머지(Concept/Hook/Prompt 생성)는 도구 접근 없이 순수 텍스트 생성만 수행한다.
 
-## Higgsfield로 실제 영상 생성까지 연결하기
+## 이전 프로토타입과의 관계
 
-3단계에서 생성된 JSON의 각 객체(`model`, `prompt`, `aspect_ratio`, `duration`, `medias`)는 그대로 다음 두 방법 중 하나로 사용합니다.
+이 프로젝트 이전에 존재했던 3페이지짜리 JSON-파일 기반 도구(트렌드 기록 → 씬 프롬프트 → Higgsfield 프롬프트)는 삭제하지 않고 `app/_legacy_*`, `lib/_legacy_*` 로 이동해 라우팅에서만 제외했다(Next.js는 `_`로 시작하는 폴더를 라우트로 인식하지 않는다). 코드는 그대로 저장소에 남아 있다.
 
-- **Higgsfield 웹앱**: 해당 모델 선택 → prompt 붙여넣기 → aspect ratio/duration 설정 → (필요 시) 캐릭터 레퍼런스 이미지 업로드 → 생성.
-- **Claude Code (Higgsfield MCP)**: `generate_video` 호출 시 `params`에 JSON 객체의 값을 그대로 전달합니다. 제출 전 `get_cost:true`로 크레딧을 먼저 확인하세요.
+## 알려진 제약 (정직하게 기록)
 
-## 알려진 사항
-
-- 로컬 단일 사용자 도구로 설계되어 인증/권한 제어가 없습니다. 외부에 노출하지 말고 로컬에서만 사용하세요.
-- Next.js 14.2.x 최신 패치를 사용하지만, 이 버전대는 최신 보안 권고(Server Actions/Server Function 관련) 일부가 아직 backport되지 않았습니다. 이 앱은 Server Actions를 사용하지 않고 API 라우트만 사용하므로 해당 취약점의 실제 노출 경로는 없지만, 프로덕션에 배포할 계획이 있다면 Next 16 이상으로 업그레이드를 검토하세요.
+- **`node:sqlite`는 Node의 실험적 기능**이다. Node 버전이 바뀌면 동작이 달라질 수 있다.
+- **Trend Radar 조사는 8단계 멀티 에이전트 파이프라인(Trend Scout→...→Editor in Chief)의 축약판**이다. 단일 구조화 Claude 호출로 보통 5~12개 트렌드를 찾는다(스펙이 요구하는 "최소 50개 시그널"에는 못 미친다).
+- **Story Engine·Storyboard·ChatGPT Prompt Studio·Higgsfield Prompt Studio가 하나의 생성 단계로 압축**되어 있다. 스펙은 이를 별도 화면으로 나누지만, Phase 1에서는 하나의 Claude 호출로 처리한다.
+- **Phase 2(Audio/Caption/Effect/Publish Pack), Phase 3(Asset Manager/FFmpeg Post Studio/Render), Phase 4(Analytics/Channel DNA)는 아직 구현되지 않았다.** 자세한 내용은 저장소 루트의 `V3_1_STATUS.md` 참고.
+- **Claude CLI subprocess 호출은 느리다** (트렌드 조사 ~2-3분, 컨셉/훅/프롬프트 생성 각 1-2분). 웹 요청 타임아웃을 길게 잡아두었다.
