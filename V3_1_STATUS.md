@@ -64,9 +64,36 @@ Production › PUBLISH: GENERATE PUBLISH PACK
 
 ## Phase 3 — Asset Manager, FFmpeg 기반 Post Studio, Preview/Final Render
 
-**상태: NOT STARTED**
+**상태: DONE**
 
-이 세션에서 이 컨테이너에 ffmpeg/ffprobe를 설치하고 subprocess 호출이 가능함은 확인했지만, 실제 업로드→타임라인→렌더 기능은 아직 코드가 없다. (사용자 로컬 환경에 ffmpeg가 있다는 보장도 없으므로 Settings의 SYSTEM STATUS에서 사전 체크만 구현되어 있다.)
+실제 파일 업로드부터 재생 가능한 MP4 출력까지 curl(API), 독립 ffprobe 검증, 프레임 추출 육안 확인, Playwright 브라우저 스크린샷으로 실측했다. (실제 Higgsfield 클립이 없으므로 ffmpeg의 `color`/`sine` 소스로 8초짜리 합성 테스트 클립 3개(파랑/초록/빨강) + 24초 톤 음악 1개를 만들어 사용 — `webapp/scripts/seed-test-production.mjs`로 Claude 호출 없이 테스트용 Production을 시드했다.)
+
+```
+ASSETS 탭: 영상 클립 3개 + 음악 1개 업로드 → ffprobe로 실제 duration/resolution 추출 확인 → 각 클립을 Scene 1/2/3에 연결
+RENDER 탭: RENDER PREVIEW (540x960) → 4.3초 만에 완료, 파일 400KB, has_audio=true
+  → RENDER FINAL (1080x1920 @30fps) → 7초 만에 완료
+  → 출력 파일을 독립적으로 ffprobe 재검증(우리 리포트와 별개로 duration/해상도/코덱 일치 확인)
+  → t=1s/9s/17s 프레임을 직접 추출해 육안 확인: Scene 순서(파랑→초록→빨강)와 한글 자막 하드섭("테스트 훅 텍스트"
+    "전개 자막" "반전의 순간")이 정확한 타이밍에 정확히 렌더링됨을 확인
+  → silencedetect로 배경음악이 무음 없이 믹스되었음을 확인
+  → 브라우저에서 <video> 플레이어로 실제 재생 가능함을 스크린샷으로 확인
+```
+
+**보안 검증**:
+- 허용되지 않은 MIME 타입(application/x-msdownload) 업로드 → 415 거부 확인
+- 파일명에 `../../../etc/passwd_pwned.mp4` 같은 path traversal 문자열을 넣어도 저장 경로는 항상 `{assetId}.{ext}`로 고정되어 영향 없음을 확인 (원본 파일명은 표시용으로만 sanitize 후 보관)
+- FFmpeg는 항상 `execFile`에 인자 배열로 전달되고 shell을 거치지 않음 — 파일 경로에 어떤 문자가 들어와도 명령 주입 불가능한 구조
+
+**실패 복구 검증**:
+- Scene 2에 연결된 클립을 해제하고 렌더 → 크래시 없이 COMPLETED, 경고 메시지("Scene 2에 연결된 영상 클립이 없습니다")와 함께 나머지 2개 클립(16초)만으로 렌더됨을 확인
+- 클립 파일을 텍스트로 손상시킨 뒤 렌더 → FFmpeg 실패를 포착해 Job을 FAILED로 표시(서버 크래시 없음), 이후 API가 정상 응답하는지 확인, 파일 복구 후 재렌더 → COMPLETED로 정상 복구됨을 확인
+
+**Phase 3에서 의도적으로 단순화한 것**:
+- Effect Track(효과 타임라인)에 있는 효과는 아직 렌더에 적용하지 않는다 — 렌더 리포트에 "N개 효과가 있지만 적용하지 않음(SIMPLIFIED)"으로 명시. Punch Zoom/Speed Ramp 등은 다음 단계 과제.
+- 원본 클립의 오디오 트랙은 사용하지 않는다 — 배경음악(또는 없으면 무음)만 최종 오디오로 사용한다. Higgsfield 클립은 보통 오디오가 없거나 부수적이라는 전제하의 의도적 단순화.
+- 트랜지션은 하드컷만 지원한다 (크로스페이드/휩 트랜지션 등은 미구현).
+- Job Queue는 비동기 상태 폴링(QUEUED→RUNNING→...) 없이 동기 실행이다 — 로컬 단일 사용자, 짧은 클립 기준으로는 문제없지만 스펙이 말하는 완전한 Job 시스템은 아니다.
+- 자동화된 테스트 스위트(코드화된 unit/integration test)는 작성하지 않았다 — 이번 검증은 실제 서버 구동 + curl + ffprobe + Playwright로 수행한 수동/스크립트 검증이다.
 
 ## Phase 4 — Analytics, Channel DNA, Format Fatigue, Prompt Learning
 
@@ -99,4 +126,4 @@ npm run dev
 
 ---
 
-**VIRAL STUDIO V3.1 — PHASE 1, PHASE 2 READY.** Phase 3~4와 V3.2는 아직 준비되지 않았다.
+**VIRAL STUDIO V3.1 — PHASE 1, PHASE 2, PHASE 3 READY.** Phase 4와 V3.2는 아직 준비되지 않았다.

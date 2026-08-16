@@ -3,9 +3,21 @@
 import { useEffect, useState } from 'react';
 import CopyButton from '../../../components/CopyButton';
 
-const TABS = ['OVERVIEW', 'HOOK', 'PROMPTS', 'AUDIO', 'CAPTIONS', 'EFFECTS', 'PUBLISH'];
+const TABS = ['OVERVIEW', 'HOOK', 'PROMPTS', 'ASSETS', 'AUDIO', 'CAPTIONS', 'EFFECTS', 'RENDER', 'PUBLISH'];
 const HIGGSFIELD_MODES = ['STABLE', 'CINEMATIC', 'VIRAL'];
 const EFFECT_BUDGETS = ['LOW', 'BALANCED', 'HIGH_ENERGY'];
+const ASSET_TYPES = ['VIDEO_CLIP', 'MUSIC', 'SFX', 'VOICE', 'REFERENCE_IMAGE', 'GENERATED_IMAGE', 'THUMBNAIL', 'OTHER'];
+const RENDER_PRESETS = ['PREVIEW', 'FINAL'];
+
+function JobStatusBadge({ status }) {
+  const color =
+    status === 'COMPLETED'
+      ? 'bg-accent2 text-white'
+      : status === 'FAILED'
+      ? 'bg-red-500 text-white'
+      : 'bg-amber-200 text-amber-900';
+  return <span className={`badge ${color}`}>{status}</span>;
+}
 
 function GenPanel({ label, onClick, loading, result }) {
   return (
@@ -56,6 +68,14 @@ export default function ProductionWorkspacePage({ params }) {
   const [generatingPublish, setGeneratingPublish] = useState(false);
   const [publishGenResult, setPublishGenResult] = useState(null);
   const [approving, setApproving] = useState(false);
+
+  const [uploadType, setUploadType] = useState('VIDEO_CLIP');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+
+  const [renderPreset, setRenderPreset] = useState('PREVIEW');
+  const [rendering, setRendering] = useState(false);
+  const [renderError, setRenderError] = useState(null);
 
   useEffect(() => {
     refresh();
@@ -162,9 +182,67 @@ export default function ProductionWorkspacePage({ params }) {
     }
   }
 
+  async function handleUpload(e) {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      for (const file of files) {
+        const form = new FormData();
+        form.append('productionId', id);
+        form.append('type', uploadType);
+        form.append('file', file);
+        const res = await fetch('/api/production/assets', { method: 'POST', body: form });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setUploadError(data.error || `업로드 실패 (${res.status})`);
+          break;
+        }
+      }
+      refresh();
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  }
+
+  async function handleLinkScene(assetId, sceneNumber) {
+    await fetch(`/api/production/assets/${assetId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scene_number: sceneNumber === '' ? null : Number(sceneNumber) }),
+    });
+    refresh();
+  }
+
+  async function handleDeleteAsset(assetId) {
+    await fetch(`/api/production/assets/${assetId}`, { method: 'DELETE' });
+    refresh();
+  }
+
+  async function handleRender() {
+    setRendering(true);
+    setRenderError(null);
+    try {
+      const res = await fetch('/api/production/render', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productionId: id, preset: renderPreset }),
+      });
+      const data = await res.json();
+      if (!res.ok) setRenderError(data.error || '렌더 요청 실패');
+      refresh();
+    } finally {
+      setRendering(false);
+    }
+  }
+
   if (!bundle) return <p className="text-sm text-neutral-400">불러오는 중...</p>;
-  const { production, concept, hooks, promptPack, audioPlan, captionTrack, effectTrack, publishPack } = bundle;
+  const { production, concept, hooks, promptPack, audioPlan, captionTrack, effectTrack, publishPack, assets, renderJobs } =
+    bundle;
   if (!production) return <p className="text-sm text-red-500">Production을 찾을 수 없습니다.</p>;
+  const latestJob = renderJobs?.[0];
 
   return (
     <div className="space-y-6">
@@ -355,6 +433,70 @@ export default function ProductionWorkspacePage({ params }) {
         </div>
       )}
 
+      {tab === 'ASSETS' && (
+        <div className="space-y-4">
+          <div className="card p-5 space-y-3">
+            <p className="label">업로드 (Higgsfield 영상 클립 / 음악 / 이미지)</p>
+            <div className="flex flex-wrap gap-2 items-center">
+              <select className="input w-auto" value={uploadType} onChange={(e) => setUploadType(e.target.value)}>
+                {ASSET_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="file"
+                multiple
+                accept="video/mp4,video/quicktime,video/webm,audio/mpeg,audio/wav,audio/mp4,audio/aac,image/png,image/jpeg,image/webp"
+                onChange={handleUpload}
+                disabled={uploading}
+                className="text-sm"
+              />
+              {uploading && <span className="text-xs text-neutral-400">업로드 중...</span>}
+            </div>
+            {uploadError && <p className="text-sm text-red-600">{uploadError}</p>}
+            <p className="text-xs text-neutral-400">
+              허용 형식: mp4/mov/webm(영상), mp3/wav/m4a/aac(오디오), png/jpg/webp(이미지). 업로드된 파일은 원본 그대로{' '}
+              <code>data/assets/original/</code>에 저장되며 이 프로젝트가 직접 수정하지 않습니다.
+            </p>
+          </div>
+
+          <div className="card p-5">
+            <p className="label mb-3">에셋 목록 ({assets?.length || 0})</p>
+            {(!assets || assets.length === 0) && <p className="text-sm text-neutral-400">아직 업로드된 에셋이 없습니다.</p>}
+            <div className="space-y-2">
+              {assets?.map((a) => (
+                <div key={a.id} className="border border-neutral-100 rounded-lg p-3 flex flex-wrap items-center gap-3 text-sm">
+                  <span className="badge bg-neutral-900 text-white shrink-0">{a.type}</span>
+                  <span className="truncate max-w-[220px]">{a.original_filename || a.id}</span>
+                  <span className="text-xs text-neutral-400 shrink-0">
+                    {a.duration_sec ? `${a.duration_sec.toFixed(1)}s` : ''} {a.width ? `· ${a.width}x${a.height}` : ''}
+                  </span>
+                  {a.type === 'VIDEO_CLIP' && (
+                    <select
+                      className="input w-auto ml-auto"
+                      value={a.linked_scene_number ?? ''}
+                      onChange={(e) => handleLinkScene(a.id, e.target.value)}
+                    >
+                      <option value="">Scene 연결 안 함</option>
+                      {(production.storyboard || []).map((s) => (
+                        <option key={s.scene_number} value={s.scene_number}>
+                          Scene {s.scene_number}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <button className="btn-ghost text-xs text-red-600 shrink-0" onClick={() => handleDeleteAsset(a.id)}>
+                    삭제
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {tab === 'AUDIO' && (
         <div className="space-y-4">
           <GenPanel label="GENERATE AUDIO PLAN" onClick={handleGenerateAudio} loading={generatingAudio} result={audioGenResult} />
@@ -526,6 +668,107 @@ export default function ProductionWorkspacePage({ params }) {
                       <span className="text-xs text-neutral-400">strength: {e.strength}</span>
                     </div>
                     <p className="text-xs text-neutral-500 mt-1">{e.reason}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'RENDER' && (
+        <div className="space-y-4">
+          <div className="card p-5 space-y-3">
+            <p className="label">POST STUDIO — LOCAL RENDER</p>
+            <p className="text-xs text-neutral-500">
+              ASSETS 탭에서 각 Scene에 영상 클립을 연결하고, CAPTIONS/AUDIO를 먼저 생성해 두면 이 렌더에 반영됩니다. 이
+              로컬 렌더러는 클립 연결·자막 하드섭·배경음악 믹스·화면비 변환·컷 순서까지 지원하며, Punch
+              Zoom/Speed Ramp 등 고급 Effect는 아직 적용하지 않습니다(SIMPLIFIED로 표시).
+            </p>
+            <div className="flex gap-2">
+              {RENDER_PRESETS.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setRenderPreset(p)}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold border ${
+                    renderPreset === p ? 'bg-accent text-white border-accent' : 'border-neutral-300 text-neutral-600'
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+            <button className="btn-primary" onClick={handleRender} disabled={rendering}>
+              {rendering ? '렌더링 중... (수 초~수 분)' : `RENDER ${renderPreset}`}
+            </button>
+            {renderError && <p className="text-sm text-red-600">{renderError}</p>}
+          </div>
+
+          {latestJob && (
+            <div className="card p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <p className="label">최근 렌더 ({latestJob.preset})</p>
+                <JobStatusBadge status={latestJob.status} />
+              </div>
+
+              {latestJob.manifest?.warnings?.length > 0 && (
+                <ul className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1">
+                  {latestJob.manifest.warnings.map((w, i) => (
+                    <li key={i}>⚠ {w}</li>
+                  ))}
+                </ul>
+              )}
+
+              {latestJob.status === 'FAILED' && <p className="text-sm text-red-600">{latestJob.error}</p>}
+
+              {latestJob.status === 'COMPLETED' && (
+                <>
+                  <video controls className="w-full max-w-xs rounded-lg border border-neutral-200" src={`/api/production/render/${latestJob.id}/file`} />
+                  <div className="grid md:grid-cols-3 gap-2 text-xs">
+                    <div className="bg-neutral-50 rounded p-2">
+                      <p className="text-neutral-400">해상도</p>
+                      <p className="font-semibold">{latestJob.report.output_resolution}</p>
+                    </div>
+                    <div className="bg-neutral-50 rounded p-2">
+                      <p className="text-neutral-400">길이 / FPS</p>
+                      <p className="font-semibold">
+                        {latestJob.report.duration_sec?.toFixed?.(1)}s / {latestJob.report.fps}
+                      </p>
+                    </div>
+                    <div className="bg-neutral-50 rounded p-2">
+                      <p className="text-neutral-400">파일 크기</p>
+                      <p className="font-semibold">
+                        {latestJob.report.file_size_bytes ? `${(latestJob.report.file_size_bytes / 1024 / 1024).toFixed(2)}MB` : '-'}
+                      </p>
+                    </div>
+                    <div className="bg-neutral-50 rounded p-2">
+                      <p className="text-neutral-400">비디오 코덱</p>
+                      <p className="font-semibold">{latestJob.report.video_codec}</p>
+                    </div>
+                    <div className="bg-neutral-50 rounded p-2">
+                      <p className="text-neutral-400">오디오 존재</p>
+                      <p className="font-semibold">{String(latestJob.report.has_audio)}</p>
+                    </div>
+                    <div className="bg-neutral-50 rounded p-2">
+                      <p className="text-neutral-400">렌더 시간</p>
+                      <p className="font-semibold">{(latestJob.report.render_time_ms / 1000).toFixed(1)}s</p>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {renderJobs?.length > 1 && (
+            <div className="card p-5">
+              <p className="label mb-2">렌더 기록</p>
+              <ul className="text-sm space-y-1">
+                {renderJobs.map((j) => (
+                  <li key={j.id} className="flex items-center justify-between border-b border-neutral-100 py-1">
+                    <span>
+                      {j.preset} · {new Date(j.created_at).toLocaleString('ko-KR')}
+                    </span>
+                    <JobStatusBadge status={j.status} />
                   </li>
                 ))}
               </ul>

@@ -518,3 +518,134 @@ function safeParse(str, fallback = null) {
     return fallback;
   }
 }
+
+// ---------- Assets ----------
+export function insertAsset(item) {
+  const db = getDb();
+  const id = item.id || genId('asset');
+  db.prepare(
+    `INSERT INTO assets (id, created_at, production_id, type, original_filename, stored_path, mime_type,
+      duration_sec, width, height, fps, codec, linked_scene_number, source_type, license_note, creator,
+      source_url, commercial_use_confirmed)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).run(
+    id,
+    now(),
+    item.production_id,
+    item.type,
+    item.original_filename || '',
+    item.stored_path,
+    item.mime_type || '',
+    item.duration_sec ?? null,
+    item.width ?? null,
+    item.height ?? null,
+    item.fps ?? null,
+    item.codec || '',
+    item.linked_scene_number ?? null,
+    item.source_type || 'unknown',
+    item.license_note || '',
+    item.creator || '',
+    item.source_url || '',
+    item.commercial_use_confirmed ? 1 : 0
+  );
+  return getAsset(id);
+}
+
+export function listAssetsByProduction(productionId) {
+  const db = getDb();
+  return db
+    .prepare('SELECT * FROM assets WHERE production_id = ? ORDER BY created_at ASC')
+    .all(productionId)
+    .map(parseAssetRow);
+}
+
+export function getAsset(id) {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM assets WHERE id = ?').get(id);
+  return row ? parseAssetRow(row) : null;
+}
+
+export function linkAssetToScene(id, sceneNumber) {
+  const db = getDb();
+  db.prepare('UPDATE assets SET linked_scene_number = ? WHERE id = ?').run(sceneNumber, id);
+  return getAsset(id);
+}
+
+export function deleteAsset(id) {
+  const db = getDb();
+  db.prepare('DELETE FROM assets WHERE id = ?').run(id);
+}
+
+function parseAssetRow(row) {
+  return { ...row, commercial_use_confirmed: Boolean(row.commercial_use_confirmed) };
+}
+
+// ---------- Render Jobs ----------
+export function insertRenderJob(item) {
+  const db = getDb();
+  const id = item.id || genId('render');
+  db.prepare(
+    `INSERT INTO render_jobs (id, created_at, production_id, preset, status, manifest, ffmpeg_args, output_path,
+      report, error, started_at, completed_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).run(
+    id,
+    now(),
+    item.production_id,
+    item.preset,
+    item.status || 'QUEUED',
+    JSON.stringify(item.manifest || {}),
+    JSON.stringify(item.ffmpeg_args || []),
+    item.output_path || null,
+    JSON.stringify(item.report || {}),
+    item.error || null,
+    item.started_at || null,
+    item.completed_at || null
+  );
+  return getRenderJob(id);
+}
+
+export function updateRenderJob(id, patch) {
+  const db = getDb();
+  const current = getRenderJob(id);
+  if (!current) return null;
+  const merged = { ...current, ...patch };
+  db.prepare(
+    `UPDATE render_jobs SET status = ?, manifest = ?, ffmpeg_args = ?, output_path = ?, report = ?, error = ?,
+      started_at = ?, completed_at = ? WHERE id = ?`
+  ).run(
+    merged.status,
+    JSON.stringify(merged.manifest || {}),
+    JSON.stringify(merged.ffmpeg_args || []),
+    merged.output_path || null,
+    JSON.stringify(merged.report || {}),
+    merged.error || null,
+    merged.started_at || null,
+    merged.completed_at || null,
+    id
+  );
+  return getRenderJob(id);
+}
+
+export function getRenderJob(id) {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM render_jobs WHERE id = ?').get(id);
+  return row ? parseRenderJobRow(row) : null;
+}
+
+export function listRenderJobsByProduction(productionId) {
+  const db = getDb();
+  return db
+    .prepare('SELECT * FROM render_jobs WHERE production_id = ? ORDER BY created_at DESC')
+    .all(productionId)
+    .map(parseRenderJobRow);
+}
+
+function parseRenderJobRow(row) {
+  return {
+    ...row,
+    manifest: safeParse(row.manifest, {}),
+    ffmpeg_args: safeParse(row.ffmpeg_args, []),
+    report: safeParse(row.report, {}),
+  };
+}

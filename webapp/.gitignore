@@ -3,5 +3,8 @@ node_modules/
 data/settings.json
 data/*.sqlite
 data/*.sqlite-*
+data/assets/
+data/exports/
+data/temp/
 .env.local
 npm-debug.log*

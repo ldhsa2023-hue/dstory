@@ -151,5 +151,41 @@ function migrate(db) {
       qc_checklist TEXT,
       ready_to_publish INTEGER DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS assets (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      production_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      original_filename TEXT,
+      stored_path TEXT NOT NULL,
+      mime_type TEXT,
+      duration_sec REAL,
+      width INTEGER,
+      height INTEGER,
+      fps REAL,
+      codec TEXT,
+      linked_scene_number INTEGER,
+      source_type TEXT,
+      license_note TEXT,
+      creator TEXT,
+      source_url TEXT,
+      commercial_use_confirmed INTEGER DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS render_jobs (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      production_id TEXT NOT NULL,
+      preset TEXT NOT NULL,
+      status TEXT DEFAULT 'QUEUED',
+      manifest TEXT,
+      ffmpeg_args TEXT,
+      output_path TEXT,
+      report TEXT,
+      error TEXT,
+      started_at TEXT,
+      completed_at TEXT
+    );
   `);
 }

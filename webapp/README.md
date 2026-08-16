@@ -1,4 +1,4 @@
-# Viral Studio V3.1 (Phase 1 + Phase 2)
+# Viral Studio V3.1 (Phase 1 + Phase 2 + Phase 3)
 
 로컬에서 실행되는 AI 콘텐츠 제작 운영 시스템. Trend Intelligence → Concept → Hook → ChatGPT/Higgsfield Prompt Pack까지, 실제 Claude Code CLI를 AI 백엔드로 사용해 자동 생성한다. 이미지·영상 생성 자체(ChatGPT/Higgsfield 호출)는 자동화하지 않으며, 생성된 프롬프트를 사용자가 직접 복사해 사용한다.
 
@@ -8,7 +8,7 @@
 
 1. **Node.js ≥ 22.5** — `node:sqlite`(experimental)를 사용하므로 필요.
 2. **Claude Code CLI** — 이 앱은 서버에서 `claude -p ...`를 subprocess로 호출한다. `claude`가 PATH에 있고 이미 로그인되어 있어야 한다 (`claude --version`으로 확인). 감지되지 않으면 각 화면은 자동 실행 대신 "복사해서 직접 실행" 모드로 전환된다.
-3. **FFmpeg / FFprobe** — Phase 3(Post Studio 렌더링)부터 필요. Phase 1에는 필요 없다.
+3. **FFmpeg / FFprobe** — Phase 3(에셋 업로드 시 기술 메타데이터 추출, Post Studio 렌더링)부터 필요. Phase 1~2에는 필요 없다. `ffmpeg -version` / `ffprobe -version`으로 확인하거나 Settings의 SYSTEM STATUS를 본다.
 
 ## 실행
 
@@ -53,14 +53,33 @@ PRODUCTION › PUBLISH 탭: GENERATE PUBLISH PACK
   → APPROVE FINAL (Human Approval Gate) — 자동 게시 없음. 실제 업로드는 사용자가 직접 진행.
 ```
 
+## Phase 3 워크플로우 (실제 동작 확인됨)
+
+```
+PRODUCTION › ASSETS 탭: Higgsfield에서 실제로 생성한 영상 클립(mp4/mov/webm) 업로드
+  → 업로드 즉시 ffprobe로 실제 duration/해상도/코덱 추출 (추측하지 않음)
+  → 각 클립을 Scene 1/2/3...에 연결. 음악(mp3/wav/m4a/aac)도 별도 업로드
+PRODUCTION › RENDER 탭: PREVIEW(540x960, 빠른 인코딩) 또는 FINAL(1080x1920, 고품질) 선택 → RENDER
+  → Scene 순서대로 클립을 이어붙이고(하드컷) · 9:16(또는 16:9)로 스케일/크롭 ·
+    CAPTIONS 탭에서 만든 자막을 하드섭으로 삽입 · 배경음악을 페이드인/아웃과 함께 믹스
+  → 완료되면 브라우저에서 바로 재생 가능한 MP4 + 렌더 리포트(해상도/길이/코덱/용량/렌더시간/경고) 표시
+```
+
+`webapp/scripts/seed-test-production.mjs`로 Claude 호출 없이 테스트용 Production을 만들고, ffmpeg의 `color`/`sine` 소스로 합성한 테스트 클립을 업로드해 렌더 파이프라인 전체(업로드 → 링크 → PREVIEW/FINAL 렌더 → 프레임 추출 검증 → 실패 복구)를 실측 검증했다. 자세한 내용은 `V3_1_STATUS.md`.
+
 ## 아키텍처
 
 | 구성 | 내용 |
 |---|---|
-| DB | `node:sqlite` (`data/viral-studio.sqlite`, git 추적 제외) — ChannelProfile, ResearchRun, Trend, Concept, Hook, Production, PromptPack, AudioPlan, CaptionTrack, EffectTrack, PublishPack |
+| DB | `node:sqlite` (`data/viral-studio.sqlite`, git 추적 제외) — ChannelProfile, ResearchRun, Trend, Concept, Hook, Production, PromptPack, AudioPlan, CaptionTrack, EffectTrack, PublishPack, Asset, RenderJob |
 | AI Engine | `lib/ai/engine.js` — `ClaudeCLIEngine`(기본, `claude -p --output-format json` subprocess) / `ManualEngine`(fallback, 프롬프트만 생성) |
 | 프롬프트 빌더 | `lib/prompts/{trendResearch,conceptLab,hookEngine,promptStudio,audioDirector,captionEngine,effectDirector,publishPack}.js` |
 | 채점 로직 | `lib/scoring.js` — Channel Fit Score, Today Top3 랭킹, Higgsfield 모델 카탈로그 |
+| 미디어/렌더 | `lib/media/{paths,ffprobe}.js`(안전한 업로드 경로 + 기술 메타데이터), `lib/render/{manifest,ffmpegCompiler,runner}.js`(Render Manifest → FFmpeg 인자 배열 → 실행) |
+
+Claude 호출은 항상 구조화된 JSON 스키마를 요청하고, 파싱 실패 시 1회 자동 재시도(validation feedback 포함)한다. Trend Radar 조사에만 `WebSearch`/`WebFetch` 도구 접근을 허용하고, 나머지(Concept/Hook/Prompt 생성)는 도구 접근 없이 순수 텍스트 생성만 수행한다.
+
+FFmpeg는 항상 `execFile`에 인자 **배열**로 전달되며 shell을 거치지 않는다 — 업로드 파일명은 저장 경로 생성에 전혀 쓰이지 않고(`{assetId}.{ext}`로 고정), MIME 타입 allowlist로만 검증한다. 자세한 내용은 `lib/media/paths.js`, `lib/render/ffmpegCompiler.js` 참고.
 
 Claude 호출은 항상 구조화된 JSON 스키마를 요청하고, 파싱 실패 시 1회 자동 재시도(validation feedback 포함)한다. Trend Radar 조사에만 `WebSearch`/`WebFetch` 도구 접근을 허용하고, 나머지(Concept/Hook/Prompt 생성)는 도구 접근 없이 순수 텍스트 생성만 수행한다.
 
@@ -73,6 +92,8 @@ Claude 호출은 항상 구조화된 JSON 스키마를 요청하고, 파싱 실�
 - **`node:sqlite`는 Node의 실험적 기능**이다. Node 버전이 바뀌면 동작이 달라질 수 있다.
 - **Trend Radar 조사는 8단계 멀티 에이전트 파이프라인(Trend Scout→...→Editor in Chief)의 축약판**이다. 단일 구조화 Claude 호출로 보통 5~12개 트렌드를 찾는다(스펙이 요구하는 "최소 50개 시그널"에는 못 미친다).
 - **Story Engine·Storyboard·ChatGPT Prompt Studio·Higgsfield Prompt Studio가 하나의 생성 단계로 압축**되어 있다. 스펙은 이를 별도 화면으로 나누지만, Phase 1에서는 하나의 Claude 호출로 처리한다.
-- **Phase 3(Asset Manager/FFmpeg Post Studio/Render), Phase 4(Analytics/Channel DNA)는 아직 구현되지 않았다.** Phase 2까지는 완료. 자세한 내용은 저장소 루트의 `V3_1_STATUS.md` 참고.
-- **Publish 탭의 "APPROVE FINAL"은 실제 렌더링된 영상 파일 승인이 아니다.** Phase 3(렌더링)이 아직 없으므로, 이 승인은 "콘텐츠 패키지(제목/설명/썸네일 기획/정책 검토)가 준비되었다"는 의미다.
+- **Phase 4(Analytics/Channel DNA)는 아직 구현되지 않았다.** Phase 1~3은 완료. 자세한 내용은 저장소 루트의 `V3_1_STATUS.md` 참고.
+- **Publish 탭의 "APPROVE FINAL"은 여전히 콘텐츠 패키지(제목/설명/썸네일 기획/정책 검토) 승인이다.** Render 탭에서 실제 MP4를 만들 수 있게 됐지만, Publish 탭의 승인 버튼과 렌더 완료 여부는 아직 서로 연결되어 있지 않다(수동으로 각각 확인 필요) — 다음 개선 과제.
+- **로컬 렌더러는 Effect Track의 효과(Punch Zoom 등)를 적용하지 않는다.** 렌더 리포트에 SIMPLIFIED로 명시하고, 클립 연결·자막 하드섭·배경음악 믹스·화면비 변환·컷 순서만 지원한다. 원본 클립의 오디오는 사용하지 않고 배경음악(또는 무음)만 최종 오디오로 쓴다. 트랜지션은 하드컷만 지원한다.
+- **Job Queue는 비동기 폴링 없이 동기 실행이다.** 로컬 단일 사용자·짧은 Shorts 클립 기준으로는 문제없지만, 렌더 요청이 완료될 때까지 API 응답이 대기한다.
 - **Claude CLI subprocess 호출은 느리다** (트렌드 조사 ~2-3분, 컨셉/훅/프롬프트 생성 각 1-2분). 웹 요청 타임아웃을 길게 잡아두었다.

@@ -8,6 +8,8 @@ import {
   getCaptionTrack,
   getEffectTrack,
   getPublishPack,
+  listAssetsByProduction,
+  listRenderJobsByProduction,
   updateProduction,
 } from '../../../../lib/db/repo';
 
@@ -21,7 +23,20 @@ export async function GET(_req, { params }) {
   const captionTrack = getCaptionTrack(production.id);
   const effectTrack = getEffectTrack(production.id);
   const publishPack = getPublishPack(production.id);
-  return NextResponse.json({ production, concept, hooks, promptPack, audioPlan, captionTrack, effectTrack, publishPack });
+  const assets = listAssetsByProduction(production.id);
+  const renderJobs = listRenderJobsByProduction(production.id);
+  return NextResponse.json({
+    production,
+    concept,
+    hooks,
+    promptPack,
+    audioPlan,
+    captionTrack,
+    effectTrack,
+    publishPack,
+    assets,
+    renderJobs,
+  });
 }
 
 export async function PATCH(req, { params }) {
