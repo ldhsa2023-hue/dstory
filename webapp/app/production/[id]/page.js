@@ -99,6 +99,7 @@ export default function ProductionWorkspacePage({ params }) {
   const [videoPromptGenResult, setVideoPromptGenResult] = useState(null);
   const [selectedVideoPromptId, setSelectedVideoPromptId] = useState(null);
   const [showOnlyWinners, setShowOnlyWinners] = useState(false);
+  const [showCompare, setShowCompare] = useState(false);
 
   const [generatingAudio, setGeneratingAudio] = useState(false);
   const [audioGenResult, setAudioGenResult] = useState(null);
@@ -453,6 +454,21 @@ export default function ProductionWorkspacePage({ params }) {
     (selectedVideoPromptId && videoPromptVersions.find((vp) => vp.id === selectedVideoPromptId)) ||
     videoPromptVersions[0];
 
+  const latestByProvider = {};
+  for (const vp of videoPrompts || []) {
+    if (!latestByProvider[vp.provider] || vp.version > latestByProvider[vp.provider].version) {
+      latestByProvider[vp.provider] = vp;
+    }
+  }
+  function providerPromptForScene(provider, sceneNumber) {
+    if (provider === 'higgsfield') {
+      return promptPack?.higgsfield_prompts?.find((p) => p.scene_number === sceneNumber)?.prompt || null;
+    }
+    const clip = latestByProvider[provider]?.clips?.find((c) => c.scene_number === sceneNumber);
+    if (!clip) return null;
+    return clip.flow_prompt || (clip.subject ? `${clip.subject} — ${clip.action}` : null);
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -759,6 +775,52 @@ export default function ProductionWorkspacePage({ params }) {
                         </div>
                       ))}
                   </div>
+                  {currentVideoPrompt && (
+                    <div className="flex gap-2 pt-2 border-t border-neutral-100">
+                      <a
+                        href={`/api/production/video-prompts/${currentVideoPrompt.id}/export?format=md`}
+                        className="btn-ghost text-xs"
+                      >
+                        EXPORT MD (v{currentVideoPrompt.version})
+                      </a>
+                      <a
+                        href={`/api/production/video-prompts/${currentVideoPrompt.id}/export?format=json`}
+                        className="btn-ghost text-xs"
+                      >
+                        EXPORT JSON (v{currentVideoPrompt.version})
+                      </a>
+                      <button className="btn-ghost text-xs" onClick={() => setShowCompare((v) => !v)}>
+                        {showCompare ? 'COMPARE 닫기' : 'COMPARE PROMPTS (Provider 비교)'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {showCompare && (
+                <div className="card p-5 space-y-3 overflow-x-auto">
+                  <p className="label">PROVIDER 나란히 비교 (최신/Winner 버전 아님 — 각 Provider의 최신 버전 기준)</p>
+                  {(production.storyboard || []).map((s) => (
+                    <div key={s.scene_number} className="border border-neutral-100 rounded-lg p-3">
+                      <p className="text-xs font-semibold text-neutral-500 mb-2">
+                        Scene {s.scene_number} · {s.duration_sec}s — {s.purpose}
+                      </p>
+                      <div className="grid md:grid-cols-3 gap-3">
+                        {VIDEO_PROVIDERS.map((p) => {
+                          const text = providerPromptForScene(p.id, s.scene_number);
+                          return (
+                            <div key={p.id} className="bg-neutral-50 rounded-lg p-3">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs font-semibold">{p.name}</span>
+                                {text && <CopyButton text={text} />}
+                              </div>
+                              <p className="text-xs text-neutral-600">{text || '생성된 프롬프트 없음'}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 

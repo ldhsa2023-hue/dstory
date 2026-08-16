@@ -1,7 +1,14 @@
 import Link from 'next/link';
-import { listTrends, listProductions } from '../lib/db/repo';
+import { listTrends, listProductions, listConcepts, getChannelProfile } from '../lib/db/repo';
 
 const STATUS_GROUPS = ['APPROVED', 'PROMPTS READY', 'GENERATING', 'EDITING', 'READY TO PUBLISH', 'PUBLISHED'];
+
+const WIZARD_STEPS = [
+  { href: '/settings', label: 'SETTINGS', desc: '채널 프로필(이름/목표/니치)을 입력해 이후 모든 Claude 생성의 맥락으로 사용합니다' },
+  { href: '/trends', label: 'TREND RADAR', desc: 'SCAN NOW로 실제 트렌드를 조사합니다 (Claude + WebSearch)' },
+  { href: '/concepts', label: 'CONCEPT LAB', desc: '트렌드를 오리지널 컨셉으로 재해석하고 승인해 Production을 만듭니다' },
+  { href: '/production', label: 'PRODUCTION', desc: 'Hook 선택 → Storyboard/프롬프트 생성 → Higgsfield/Google Flow에 붙여넣기' },
+];
 
 function combinedScore(t) {
   return (Number(t.opportunity_score) || 0) * 0.5 + (Number(t.channel_fit_score) || 0) * 0.5;
@@ -10,6 +17,9 @@ function combinedScore(t) {
 export default function DashboardPage() {
   const trends = listTrends();
   const productions = listProductions();
+  const concepts = listConcepts();
+  const channelProfile = getChannelProfile();
+  const isFirstRun = !channelProfile?.channelName && concepts.length === 0 && productions.length === 0;
   const top3 = [...trends.filter((t) => t.status !== 'archived')].sort((a, b) => combinedScore(b) - combinedScore(a)).slice(0, 3);
 
   const queueCounts = STATUS_GROUPS.reduce((acc, s) => ({ ...acc, [s]: 0 }), {});
@@ -27,6 +37,24 @@ export default function DashboardPage() {
           Phase 1).
         </p>
       </div>
+
+      {isFirstRun && (
+        <div className="card p-5 border-accent/40 bg-accent/5 space-y-3">
+          <p className="label">처음이신가요? — 4단계로 시작하기</p>
+          <div className="grid md:grid-cols-4 gap-3">
+            {WIZARD_STEPS.map((step, i) => (
+              <Link key={step.href} href={step.href} className="border border-neutral-200 bg-white rounded-lg p-3 hover:border-accent transition-colors">
+                <p className="text-xs text-neutral-400">STEP {i + 1}</p>
+                <p className="font-semibold text-sm mt-1">{step.label}</p>
+                <p className="text-xs text-neutral-500 mt-1">{step.desc}</p>
+              </Link>
+            ))}
+          </div>
+          <p className="text-xs text-neutral-400">
+            채널 프로필을 입력하거나 첫 Concept/Production을 만들면 이 안내는 자동으로 사라집니다.
+          </p>
+        </div>
+      )}
 
       <div className="grid md:grid-cols-3 gap-4">
         <Link href="/today" className="card p-5 hover:border-accent transition-colors">
@@ -61,13 +89,13 @@ export default function DashboardPage() {
         {productions.length === 0 && <p className="text-sm text-neutral-400 mt-3">아직 Production이 없습니다.</p>}
       </div>
 
-      <div className="card p-5">
-        <h2 className="font-semibold mb-3">CHANNEL DNA</h2>
+      <Link href="/channel-dna" className="card p-5 block hover:border-accent transition-colors">
+        <h2 className="font-semibold mb-1">CHANNEL DNA</h2>
         <p className="text-sm text-neutral-400">
-          아직 게시 성과 데이터가 없어 Channel DNA를 산출할 수 없습니다 (Phase 4에서 구현 예정). 실제 데이터가 쌓이기 전에는
-          추측하지 않습니다.
+          실제 게시 성과와 Provider별 Generation Outcome이 쌓이면 Best Hook/Genre, Provider 성공률, Format Fatigue를
+          계산합니다. 데이터가 부족하면 추측하지 않고 정직하게 알려줍니다.
         </p>
-      </div>
+      </Link>
 
       <div className="card p-5">
         <h2 className="font-semibold mb-3">최근 트렌드</h2>

@@ -313,4 +313,47 @@ PERFORMANCE 카드) 확인.
 
 ---
 
-**VIRAL STUDIO V3.1 — PHASE 1, 2, 3, 4 READY. V3.2 — PHASE A READY. Google Flow Provider Patch 1~7 전체 READY.** V3.2의 나머지 범위(Timeline UI, Beat Sync, Edit Plan→렌더러 연동)와 COMPARE PROMPTS/Export/Wizard만 아직 준비되지 않았다.
+## Google Flow Patch 8 — Export, Compare Prompts, First-Run Wizard
+
+**상태: DONE**
+
+## 실제로 구현하고 검증한 것
+
+```
+Export:
+  → GET /api/production/video-prompts/[id]/export?format=md|json — Content-Disposition:
+    attachment 헤더로 실제 파일 다운로드 확인 (curl -D로 헤더 실측:
+    "google-flow-prompts-v1.md"/"...v1.json"). MD는 Global Visual Lock + 씬별
+    mode_reason/State/Flow Prompt/Start·End Frame·Motion Bridge Prompt/Continuity/
+    Negative를 사람이 읽기 좋은 마크다운으로 포맷. 이 앱 자체가 만든 로컬 다운로드 기능일
+    뿐이므로 "Google Flow/Higgsfield 자동화 금지" 절대 규칙과 무관함을 확인.
+
+Compare Prompts:
+  → PROMPTS 탭에 COMPARE PROMPTS 토글 추가 — 클릭 시 Storyboard의 각 Scene마다
+    Higgsfield/Google Flow/Generic 3열로 나란히 표시. 실제로 동일 production에 세
+    Provider 모두 생성한 뒤 스크린샷으로 3열 모두 실제 다른 프롬프트 텍스트가 채워지는
+    것을 확인(각 Provider별 최신 버전 기준, 미생성 Provider는 "생성된 프롬프트 없음"으로
+    정직하게 표시).
+
+First-Run Wizard:
+  → Dashboard(/)에서 channel_profile.channelName 미입력 + concepts 0개 + productions
+    0개일 때만 4단계 안내 카드(SETTINGS→TREND RADAR→CONCEPT LAB→PRODUCTION) 표시.
+    실제로 DB를 비운 상태로 접속해 카드가 나타남을 스크린샷으로 확인했고, 기존 테스트
+    데이터가 있는 DB에서는 표시되지 않음을 curl grep으로 확인(정상 데이터가 있으면
+    자동으로 사라짐 — 별도 dismiss 상태 저장 불필요).
+  → 동시에 Dashboard의 CHANNEL DNA 카드가 "Phase 4에서 구현 예정"이라는 Phase 1
+    시절의 오래된 문구를 그대로 갖고 있던 것을 발견해 실제 페이지로 링크되도록 수정.
+```
+
+`next build` 클린 컴파일, Playwright로 Compare 패널(3열 씬별 비교) 및 First-Run Wizard(빈 DB) 스크린샷 확인.
+
+## 여전히 하지 않은 것 (정직하게 기록)
+
+- `.claude/agents/google-flow-specialist.md`, `.claude/skills/google-flow-prompt/`: 웹앱 API가 동일 기능을 제공하는 기존 원칙 유지, 만들지 않는다.
+- 완전 자동 Continuity Mismatch 탐지(임베딩/이미지 비교): 여전히 Claude의 서술적 판단으로 대체.
+- Google Flow/Veo 자동화(로그인, API 호출, 다운로드): 스펙이 명시적으로 금지 — 절대 구현하지 않는다.
+- V3.2의 나머지 범위(Timeline UI 풀 캔버스 에디터, LocalBeatAnalyzer 실제 BPM 감지, Edit Plan→렌더러 자동 연동)는 이번에도 범위 밖.
+
+---
+
+**VIRAL STUDIO V3.1 — PHASE 1, 2, 3, 4 READY. V3.2 — PHASE A READY. Google Flow Provider Patch 1~8 전체 READY.** V3.2의 나머지 범위(Timeline UI, Beat Sync, Edit Plan→렌더러 연동)만 아직 준비되지 않았다.

@@ -125,13 +125,13 @@ ALTER TABLE assets ADD COLUMN generation_provider TEXT;
 - `video_prompts.is_winner INTEGER DEFAULT 0` 컬럼 추가. `PATCH /api/production/video-prompts/[id]/winner`로 토글.
 - PROMPTS 탭에 "VERSION HISTORY" 목록 추가 — 같은 provider의 모든 버전을 v1/v2/... 배지로 나열, 클릭하면 그 버전의 클립을 아래에 표시(현재는 최신 버전만 보여줬다면 이제 과거 버전도 조회 가능), ★ WINNER 토글 버튼 포함. "Winner Library"는 별도 폴더 구조 대신 이 목록을 Winner만 필터링하는 체크박스로 구현한다(과설계 방지).
 
-## 9. 이번 세션(Patch 1~3, 7)에서 하지 않았던 것 — Provider Performance/Prompt Versioning은 이후 Patch 4~6에서 구현 완료 (`V3_1_STATUS.md` 참고)
+## 9. 이번 세션(Patch 1~3, 7)에서 하지 않았던 것 — 대부분 이후 Patch 4~8에서 구현 완료 (`V3_1_STATUS.md` 참고)
 
 - ~~Provider Performance/Learning 통계 페이지는 만들지 않는다~~ → **Patch 5에서 구현 완료.** `generation_provider` 컬럼에 실제로 값을 기록하고 Channel DNA 페이지에 카드로 노출한다.
 - ~~Prompt Versioning(v1/v2/v3) 및 Winner Library 폴더 구조는 만들지 않는다~~ → **Patch 6에서 구현 완료.** `video_prompts.version`이 실제로 증가하며 과거 버전을 조회/★Winner 표시할 수 있다.
-- **COMPARE PROMPTS(Provider 나란히 비교) 버튼**은 여전히 만들지 않는다.
-- **`.claude/agents/google-flow-specialist.md`, `.claude/skills/google-flow-prompt/`**는 만들지 않는다 — 기존 원칙(웹앱 API가 동일 기능 제공)을 유지한다.
-- **Export 패치(google-flow-prompts.md/json 파일 생성)**는 만들지 않는다.
-- **First-Run Wizard**는 애초에 이 프로젝트에 존재하지 않으므로(V3.1에서도 미구현) 이번에도 만들지 않는다.
-- **완전 자동 Continuity Mismatch 탐지**(임베딩/이미지 비교)는 하지 않는다 — Claude의 연속 서술 방식으로 대체한다.
-- **Google Flow/Veo 자동화(로그인, API 호출, 다운로드)는 스펙 자체가 명시적으로 금지** — 애초에 구현 대상이 아니다.
+- ~~COMPARE PROMPTS(Provider 나란히 비교) 버튼은 만들지 않는다~~ → **Patch 8에서 구현 완료.** Higgsfield/Google Flow/Generic 각 Provider의 최신 버전을 씬별로 나란히 표시.
+- ~~Export 패치(google-flow-prompts.md/json 파일 생성)는 만들지 않는다~~ → **Patch 8에서 구현 완료.** `GET /api/production/video-prompts/[id]/export?format=md|json` — 이 앱 자신의 다운로드 기능일 뿐 Google Flow/Higgsfield 자동화가 아니므로 절대 규칙과 무관하다.
+- ~~First-Run Wizard는 만들지 않는다~~ → **Patch 8에서 구현 완료.** Dashboard에서 Channel Profile 미입력 + Concept/Production 0개일 때만 4단계 안내 카드 표시, 데이터가 생기면 자동으로 사라짐(별도 dismiss 상태 저장 없음).
+- **`.claude/agents/google-flow-specialist.md`, `.claude/skills/google-flow-prompt/`**는 여전히 만들지 않는다 — 웹앱 API가 동일 기능을 제공하는 기존 원칙 유지.
+- **완전 자동 Continuity Mismatch 탐지**(임베딩/이미지 비교)는 여전히 하지 않는다 — Claude의 연속 서술 방식으로 대체한다.
+- **Google Flow/Veo 자동화(로그인, API 호출, 다운로드)는 스펙 자체가 명시적으로 금지** — 애초에 구현 대상이 아니며 이번에도 하지 않았다.

@@ -125,9 +125,17 @@ PRODUCTION › ASSETS 탭: REFERENCE_IMAGE/GENERATED_IMAGE에 Ingredient 체크 
 SETTINGS 페이지: Default Video Provider 지정 시 새로 승인되는 Production에 자동 반영
 CHANNEL DNA 페이지: PROVIDER PERFORMANCE 카드 — Provider별 Generation Outcome이
   3건 이상 쌓이면 실제 성공률(SUCCESS/전체)을 계산, 미달이면 "데이터 부족"을 정직하게 표시
+PROMPTS 탭의 EXPORT MD / EXPORT JSON 버튼: 현재 보고 있는 버전의 프롬프트를
+  google-flow-prompts-v{N}.md/json 파일로 다운로드 (이 앱 자체의 로컬 내보내기 —
+  Google Flow/Higgsfield 자동화가 아님)
+PROMPTS 탭의 COMPARE PROMPTS 버튼: Higgsfield/Google Flow/Generic 각 Provider의
+  최신 버전을 씬 단위로 3열 나란히 표시해 어떤 Provider가 어떻게 표현했는지 한눈에 비교
+Dashboard: Channel Profile 미입력 + Concept/Production 0개인 완전히 새 설치 상태에서만
+  4단계 First-Run 안내 카드 표시 (SETTINGS→TREND RADAR→CONCEPT LAB→PRODUCTION),
+  실제 데이터가 생기면 자동으로 사라짐
 ```
 
-Google Flow/Generic 프롬프트는 Higgsfield의 `prompt_pack`과 완전히 분리된 `video_prompts` 테이블에 provider별로 독립 저장되며, `/api/production/prompts/generate`(Higgsfield 전용 경로)는 이 패치에서 한 줄도 수정하지 않았다 — 자세한 검증 내역은 `V3_1_STATUS.md`의 "Google Flow / Veo Video Provider Integration Patch"와 "Google Flow Patch 4~6" 섹션 참고.
+Google Flow/Generic 프롬프트는 Higgsfield의 `prompt_pack`과 완전히 분리된 `video_prompts` 테이블에 provider별로 독립 저장되며, `/api/production/prompts/generate`(Higgsfield 전용 경로)는 이 패치에서 한 줄도 수정하지 않았다 — 자세한 검증 내역은 `V3_1_STATUS.md`의 "Google Flow / Veo Video Provider Integration Patch", "Google Flow Patch 4~6", "Google Flow Patch 8" 섹션 참고.
 
 ## 아키텍처
 
