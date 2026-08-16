@@ -12,6 +12,7 @@ import {
   listRenderJobsByProduction,
   listMediaAnalysesByProduction,
   listEditPlansByProduction,
+  getPerformanceRecord,
   updateProduction,
 } from '../../../../lib/db/repo';
 
@@ -29,6 +30,7 @@ export async function GET(_req, { params }) {
   const renderJobs = listRenderJobsByProduction(production.id);
   const mediaAnalyses = listMediaAnalysesByProduction(production.id);
   const editPlans = listEditPlansByProduction(production.id);
+  const performance = getPerformanceRecord(production.id);
   return NextResponse.json({
     production,
     concept,
@@ -42,6 +44,7 @@ export async function GET(_req, { params }) {
     renderJobs,
     mediaAnalyses,
     editPlans,
+    performance,
   });
 }
 

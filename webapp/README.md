@@ -1,4 +1,4 @@
-# Viral Studio V3.1 + V3.2 Phase A
+# Viral Studio V3.1 (Phase 1-4) + V3.2 Phase A
 
 로컬에서 실행되는 AI 콘텐츠 제작 운영 시스템. Trend Intelligence → Concept → Hook → ChatGPT/Higgsfield Prompt Pack까지, 실제 Claude Code CLI를 AI 백엔드로 사용해 자동 생성한다. 이미지·영상 생성 자체(ChatGPT/Higgsfield 호출)는 자동화하지 않으며, 생성된 프롬프트를 사용자가 직접 복사해 사용한다.
 
@@ -84,16 +84,33 @@ PRODUCTION › AUTO EDIT 탭: Intensity(MINIMAL/BALANCED/AGGRESSIVE) 선택 → 
 
 이 클립이 실제로는 아무 콘텐츠 없는 단색 테스트 영상임에도 Claude가 "solid, uniform blue/green/red" 로 정확히 묘사하고 스스로 BAD_FRAME 이슈를 표시했다 — 보지 못한 내용을 추측하지 않는다는 원칙이 실제로 지켜짐을 확인했다. 자세한 내용은 `V3_1_STATUS.md`의 V3.2 섹션과 `IMPLEMENTATION_PLAN.md`의 축소 범위 설명 참고.
 
+## Phase 4 워크플로우 — Analytics / Channel DNA (실제 동작 확인됨)
+
+```
+PRODUCTION › PERFORMANCE 탭: 실제 YouTube/Instagram 수치를 수동 입력 (또는 CSV Import)
+  → 저장 시 Production 상태가 PUBLISHED로 전환, 입력 안 한 값은 UNKNOWN으로 남음 (추측하지 않음)
+PRODUCTION › ASSETS 탭: 각 클립의 Generation Outcome(SUCCESS/RETAKE/FAIL + 사유)을 직접 기록
+  → Higgsfield 생성은 앱 밖에서 일어나므로, 결과는 항상 사용자가 보고한 실제 값
+CHANNEL DNA 페이지 (신규 상단 메뉴):
+  → 성과가 입력된 Production이 3개 미만이면 "데이터 부족"을 정직하게 표시 (개수/threshold 그대로 노출)
+  → 3개 이상이면 Best Hook Type / Best Genre / Retention Driver(Hook·Music) / Top Performers를 실제 평균으로 계산
+  → Format Fatigue: 최근 5개 Production의 실제 저장된 장르/Hook 타입이 3개 이상 겹치면 경고 (성과 데이터 불필요)
+  → Prompt Library: SUCCESS로 기록된 클립에 연결된 Scene의 실제 Higgsfield 프롬프트만 모아서 표시
+```
+
+이 로컬 환경에는 실제 게시 성과가 없으므로, `webapp/scripts/seed-phase4-test-data.mjs`로 명확히 "[TEST]"라고 표시된 테스트 Production 2개(성과 포함)를 만들어 "데이터 부족" 상태와 "충분한 데이터" 상태 양쪽을 모두 검증했다. 자세한 내용은 `V3_1_STATUS.md`.
+
 ## 아키텍처
 
 | 구성 | 내용 |
 |---|---|
-| DB | `node:sqlite` (`data/viral-studio.sqlite`, git 추적 제외) — ChannelProfile, ResearchRun, Trend, Concept, Hook, Production, PromptPack, AudioPlan, CaptionTrack, EffectTrack, PublishPack, Asset, RenderJob, MediaAnalysis, EditPlan |
+| DB | `node:sqlite` (`data/viral-studio.sqlite`, git 추적 제외) — ChannelProfile, ResearchRun, Trend, Concept, Hook, Production, PromptPack, AudioPlan, CaptionTrack, EffectTrack, PublishPack, Asset, RenderJob, MediaAnalysis, EditPlan, PerformanceRecord |
 | AI Engine | `lib/ai/engine.js` — `ClaudeCLIEngine`(기본, `claude -p --output-format json` subprocess) / `ManualEngine`(fallback, 프롬프트만 생성) |
 | Visual Provider | `lib/ai/visualProvider.js` — `ClaudeVisualProvider`(`claude -p --allowedTools Read`로 실제 이미지 판독) / `ManualVisualProvider`(fallback) |
 | 프롬프트 빌더 | `lib/prompts/{trendResearch,conceptLab,hookEngine,promptStudio,audioDirector,captionEngine,effectDirector,publishPack,autoEditDirector}.js` |
 | 채점 로직 | `lib/scoring.js` — Channel Fit Score, Today Top3 랭킹, Higgsfield 모델 카탈로그. `lib/media/hookDetector.js` — Hook Readiness 투명 공식 |
 | 미디어/렌더 | `lib/media/{paths,ffprobe,technicalValidation,signalAnalysis,keyframes,analyzeClip,timelineMap}.js`, `lib/render/{manifest,ffmpegCompiler,runner}.js`(Render Manifest → FFmpeg 인자 배열 → 실행) |
+| Analytics | `lib/analytics/channelDna.js` — 임계값 게이트(≥3건), Best-X 그룹 평균, Format Fatigue, Prompt Library 파생 |
 
 Claude 호출은 항상 구조화된 JSON 스키마를 요청하고, 파싱 실패 시 1회 자동 재시도(validation feedback 포함)한다. Trend Radar 조사에만 `WebSearch`/`WebFetch` 도구 접근을 허용하고, 나머지(Concept/Hook/Prompt 생성)는 도구 접근 없이 순수 텍스트 생성만 수행한다.
 
@@ -110,7 +127,9 @@ Claude 호출은 항상 구조화된 JSON 스키마를 요청하고, 파싱 실�
 - **`node:sqlite`는 Node의 실험적 기능**이다. Node 버전이 바뀌면 동작이 달라질 수 있다.
 - **Trend Radar 조사는 8단계 멀티 에이전트 파이프라인(Trend Scout→...→Editor in Chief)의 축약판**이다. 단일 구조화 Claude 호출로 보통 5~12개 트렌드를 찾는다(스펙이 요구하는 "최소 50개 시그널"에는 못 미친다).
 - **Story Engine·Storyboard·ChatGPT Prompt Studio·Higgsfield Prompt Studio가 하나의 생성 단계로 압축**되어 있다. 스펙은 이를 별도 화면으로 나누지만, Phase 1에서는 하나의 Claude 호출로 처리한다.
-- **Phase 4(Analytics/Channel DNA)는 아직 구현되지 않았다.** Phase 1~3은 완료. 자세한 내용은 저장소 루트의 `V3_1_STATUS.md` 참고.
+- **Phase 1~4 전부 완료.** V3.2는 Phase A(Media Analysis + Auto Edit Director)만 완료. 자세한 내용은 저장소 루트의 `V3_1_STATUS.md` 참고.
+- **Channel DNA 임계값(3)은 통계적 유의성 검정이 아니다** — "이 정도는 있어야 비교가 의미 있다"는 투명한 규칙일 뿐이다.
+- **Generation Outcome(SUCCESS/RETAKE/FAIL)은 자동 감지되지 않는다** — Higgsfield 생성은 앱 밖에서 일어나므로 사용자가 직접 기록한다.
 - **Publish 탭의 "APPROVE FINAL"은 여전히 콘텐츠 패키지(제목/설명/썸네일 기획/정책 검토) 승인이다.** Render 탭에서 실제 MP4를 만들 수 있게 됐지만, Publish 탭의 승인 버튼과 렌더 완료 여부는 아직 서로 연결되어 있지 않다(수동으로 각각 확인 필요) — 다음 개선 과제.
 - **로컬 렌더러는 Effect Track의 효과(Punch Zoom 등)를 적용하지 않는다.** 렌더 리포트에 SIMPLIFIED로 명시하고, 클립 연결·자막 하드섭·배경음악 믹스·화면비 변환·컷 순서만 지원한다. 원본 클립의 오디오는 사용하지 않고 배경음악(또는 무음)만 최종 오디오로 쓴다. 트랜지션은 하드컷만 지원한다.
 - **Job Queue는 비동기 폴링 없이 동기 실행이다.** 로컬 단일 사용자·짧은 Shorts 클립 기준으로는 문제없지만, 렌더 요청이 완료될 때까지 API 응답이 대기한다.

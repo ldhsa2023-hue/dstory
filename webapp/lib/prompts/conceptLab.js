@@ -1,6 +1,6 @@
 import { GENRES } from '../scoring';
 
-export function buildConceptPrompt({ trend, profile }) {
+export function buildConceptPrompt({ trend, profile, channelDnaSummary }) {
   const niche = GENRES.find((g) => g.key === profile?.primaryNiche)?.label || profile?.primaryNiche || '미지정';
 
   return `너는 오리지널 콘텐츠 컨셉 기획자다.
@@ -16,6 +16,7 @@ export function buildConceptPrompt({ trend, profile }) {
 주 장르: ${niche}
 목표: ${profile?.channelGoal || '미지정'}
 선호 포맷: ${profile?.preferredAspectRatio || '9:16'}, ${profile?.preferredVideoLength || 20}초
+${channelDnaSummary ? `\n[Channel DNA — 실제 게시 성과 기반 참고 정보, 절대 규칙 아님]\n${channelDnaSummary}\n` : ''}
 
 Originality Guard: 각 컨셉은 원본 트렌드 대비 아래 8개 요소 중 최소 4개를 변경해야 한다 — Subject, Character, World, Story, Conflict, Visual, Payoff, Ending. 어떤 요소를 바꿨는지 differentiation 배열에 명시해라.
 

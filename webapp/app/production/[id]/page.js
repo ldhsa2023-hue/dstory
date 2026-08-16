@@ -3,7 +3,27 @@
 import { useEffect, useState } from 'react';
 import CopyButton from '../../../components/CopyButton';
 
-const TABS = ['OVERVIEW', 'HOOK', 'PROMPTS', 'ASSETS', 'ANALYZE', 'AUTO EDIT', 'AUDIO', 'CAPTIONS', 'EFFECTS', 'RENDER', 'PUBLISH'];
+const TABS = ['OVERVIEW', 'HOOK', 'PROMPTS', 'ASSETS', 'ANALYZE', 'AUTO EDIT', 'AUDIO', 'CAPTIONS', 'EFFECTS', 'RENDER', 'PUBLISH', 'PERFORMANCE'];
+const GENERATION_OUTCOMES = ['', 'SUCCESS', 'RETAKE', 'FAIL'];
+const FAILURE_REASONS = [
+  'Character Drift', 'Motion Error', 'Physics Error', 'Camera Error', 'Object Error',
+  'Lighting Error', 'Continuity Error', 'Other',
+];
+const PERFORMANCE_FIELDS = [
+  { key: 'video_url', label: 'Video URL', type: 'text' },
+  { key: 'publish_date', label: 'Publish Date', type: 'date' },
+  { key: 'views', label: 'Views', type: 'number' },
+  { key: 'impressions', label: 'Impressions (Shown In Feed)', type: 'number' },
+  { key: 'viewed', label: 'Viewed', type: 'number' },
+  { key: 'swiped_away', label: 'Swiped Away', type: 'number' },
+  { key: 'avg_view_duration_sec', label: 'Avg View Duration (sec)', type: 'number' },
+  { key: 'avg_percentage_viewed', label: 'Avg % Viewed', type: 'number' },
+  { key: 'likes', label: 'Likes', type: 'number' },
+  { key: 'comments', label: 'Comments', type: 'number' },
+  { key: 'shares', label: 'Shares', type: 'number' },
+  { key: 'subscribers_gained', label: 'Subscribers Gained', type: 'number' },
+  { key: 'returning_viewers', label: 'Returning Viewers', type: 'number' },
+];
 const HIGGSFIELD_MODES = ['STABLE', 'CINEMATIC', 'VIRAL'];
 const EFFECT_BUDGETS = ['LOW', 'BALANCED', 'HIGH_ENERGY'];
 const ASSET_TYPES = ['VIDEO_CLIP', 'MUSIC', 'SFX', 'VOICE', 'REFERENCE_IMAGE', 'GENERATED_IMAGE', 'THUMBNAIL', 'OTHER'];
@@ -100,9 +120,19 @@ export default function ProductionWorkspacePage({ params }) {
   const [generatingEdit, setGeneratingEdit] = useState(false);
   const [editGenResult, setEditGenResult] = useState(null);
 
+  const [perfForm, setPerfForm] = useState({});
+  const [perfSaving, setPerfSaving] = useState(false);
+  const [perfSaved, setPerfSaved] = useState(false);
+  const [csvText, setCsvText] = useState('');
+  const [csvResult, setCsvResult] = useState(null);
+
   useEffect(() => {
     refresh();
   }, [id]);
+
+  useEffect(() => {
+    if (bundle?.performance) setPerfForm(bundle.performance);
+  }, [bundle?.performance]);
 
   function refresh() {
     fetch(`/api/production/${id}`)
@@ -296,6 +326,43 @@ export default function ProductionWorkspacePage({ params }) {
     }
   }
 
+  async function handleSavePerformance() {
+    setPerfSaving(true);
+    try {
+      await fetch('/api/production/performance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productionId: id, ...perfForm }),
+      });
+      setPerfSaved(true);
+      setTimeout(() => setPerfSaved(false), 2000);
+      refresh();
+    } finally {
+      setPerfSaving(false);
+    }
+  }
+
+  async function handleCsvImport() {
+    setCsvResult(null);
+    const res = await fetch('/api/production/performance/csv-import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productionId: id, csvText }),
+    });
+    const data = await res.json();
+    setCsvResult({ ok: res.ok, ...data });
+    if (res.ok) refresh();
+  }
+
+  async function handleSetGenerationOutcome(assetId, outcome, failureReason) {
+    await fetch(`/api/production/assets/${assetId}/outcome`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ outcome, failureReason }),
+    });
+    refresh();
+  }
+
   if (!bundle) return <p className="text-sm text-neutral-400">불러오는 중...</p>;
   const {
     production,
@@ -310,6 +377,7 @@ export default function ProductionWorkspacePage({ params }) {
     renderJobs,
     mediaAnalyses,
     editPlans,
+    performance,
   } =
     bundle;
   if (!production) return <p className="text-sm text-red-500">Production을 찾을 수 없습니다.</p>;
@@ -546,18 +614,46 @@ export default function ProductionWorkspacePage({ params }) {
                     {a.duration_sec ? `${a.duration_sec.toFixed(1)}s` : ''} {a.width ? `· ${a.width}x${a.height}` : ''}
                   </span>
                   {a.type === 'VIDEO_CLIP' && (
-                    <select
-                      className="input w-auto ml-auto"
-                      value={a.linked_scene_number ?? ''}
-                      onChange={(e) => handleLinkScene(a.id, e.target.value)}
-                    >
-                      <option value="">Scene 연결 안 함</option>
-                      {(production.storyboard || []).map((s) => (
-                        <option key={s.scene_number} value={s.scene_number}>
-                          Scene {s.scene_number}
-                        </option>
-                      ))}
-                    </select>
+                    <>
+                      <select
+                        className="input w-auto ml-auto"
+                        value={a.linked_scene_number ?? ''}
+                        onChange={(e) => handleLinkScene(a.id, e.target.value)}
+                      >
+                        <option value="">Scene 연결 안 함</option>
+                        {(production.storyboard || []).map((s) => (
+                          <option key={s.scene_number} value={s.scene_number}>
+                            Scene {s.scene_number}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        className="input w-auto"
+                        value={a.generation_outcome || ''}
+                        onChange={(e) => handleSetGenerationOutcome(a.id, e.target.value || null, a.failure_reason)}
+                        title="Generation Outcome — Higgsfield에서 이 클립 생성이 실제로 어땠는지 기록"
+                      >
+                        {GENERATION_OUTCOMES.map((o) => (
+                          <option key={o} value={o}>
+                            {o || 'Outcome 미기록'}
+                          </option>
+                        ))}
+                      </select>
+                      {(a.generation_outcome === 'RETAKE' || a.generation_outcome === 'FAIL') && (
+                        <select
+                          className="input w-auto"
+                          value={a.failure_reason || ''}
+                          onChange={(e) => handleSetGenerationOutcome(a.id, a.generation_outcome, e.target.value)}
+                        >
+                          <option value="">사유 선택</option>
+                          {FAILURE_REASONS.map((r) => (
+                            <option key={r} value={r}>
+                              {r}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </>
                   )}
                   <button className="btn-ghost text-xs text-red-600 shrink-0" onClick={() => handleDeleteAsset(a.id)}>
                     삭제
@@ -1218,6 +1314,73 @@ export default function ProductionWorkspacePage({ params }) {
                   </p>
                 </>
               )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'PERFORMANCE' && (
+        <div className="space-y-4">
+          <div className="card p-5 space-y-3">
+            <p className="label">수동 입력</p>
+            <p className="text-xs text-neutral-500">
+              YouTube Studio/Instagram Insights에서 실제 수치를 확인해 입력하세요. 입력하지 않은 값은 UNKNOWN으로 남고,
+              추측해서 채우지 않습니다.
+            </p>
+            <div className="grid md:grid-cols-2 gap-3">
+              {PERFORMANCE_FIELDS.map((f) => (
+                <div key={f.key}>
+                  <label className="text-xs text-neutral-500">{f.label}</label>
+                  <input
+                    type={f.type}
+                    className="input"
+                    value={perfForm[f.key] ?? ''}
+                    onChange={(e) => setPerfForm({ ...perfForm, [f.key]: e.target.value })}
+                  />
+                </div>
+              ))}
+            </div>
+            <button className="btn-primary" onClick={handleSavePerformance} disabled={perfSaving}>
+              {perfSaving ? '저장 중...' : '저장'}
+            </button>
+            {perfSaved && <p className="text-xs text-accent2">저장되었습니다. Production 상태가 PUBLISHED로 전환됩니다.</p>}
+          </div>
+
+          <div className="card p-5 space-y-2">
+            <p className="label">CSV Import</p>
+            <p className="text-xs text-neutral-500">
+              첫 줄은 헤더(예: views,likes,avg_view_duration_sec), 둘째 줄은 값. 알 수 없는 컬럼은 무시하고 알려줍니다.
+            </p>
+            <textarea
+              className="input font-mono text-xs"
+              rows={3}
+              value={csvText}
+              onChange={(e) => setCsvText(e.target.value)}
+              placeholder={'views,likes,comments,subscribers_gained\n15000,320,12,45'}
+            />
+            <button className="btn-ghost" onClick={handleCsvImport} disabled={!csvText}>
+              IMPORT
+            </button>
+            {csvResult && (
+              <p className={`text-xs ${csvResult.ok ? 'text-accent2' : 'text-red-600'}`}>
+                {csvResult.ok
+                  ? `가져오기 완료${csvResult.unknownColumns?.length ? ` (무시된 컬럼: ${csvResult.unknownColumns.join(', ')})` : ''}`
+                  : csvResult.error}
+              </p>
+            )}
+          </div>
+
+          {performance && (
+            <div className="card p-5">
+              <p className="label mb-2">현재 저장된 성과</p>
+              <div className="grid md:grid-cols-3 gap-2 text-sm">
+                {PERFORMANCE_FIELDS.map((f) => (
+                  <div key={f.key} className="bg-neutral-50 rounded p-2">
+                    <p className="text-xs text-neutral-400">{f.label}</p>
+                    <p className="font-semibold">{performance[f.key] ?? 'UNKNOWN'}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

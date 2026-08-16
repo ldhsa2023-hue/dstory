@@ -758,3 +758,69 @@ function parseEditPlanRow(row) {
     decisions: safeParse(row.decisions, []),
   };
 }
+
+// ---------- Performance Records (one per published production) ----------
+const PERF_FIELDS = [
+  'video_url', 'publish_date', 'views', 'impressions', 'viewed', 'swiped_away',
+  'avg_view_duration_sec', 'avg_percentage_viewed', 'likes', 'comments', 'shares',
+  'subscribers_gained', 'returning_viewers',
+];
+
+export function upsertPerformanceRecord(productionId, patch) {
+  const db = getDb();
+  const existing = db.prepare('SELECT * FROM performance_records WHERE production_id = ?').get(productionId);
+  const ts = now();
+  if (existing) {
+    const merged = { ...existing, ...patch };
+    db.prepare(
+      `UPDATE performance_records SET ${PERF_FIELDS.map((f) => `${f} = ?`).join(', ')}, updated_at = ? WHERE production_id = ?`
+    ).run(...PERF_FIELDS.map((f) => merged[f] ?? null), ts, productionId);
+  } else {
+    const id = genId('perf');
+    db.prepare(
+      `INSERT INTO performance_records (id, created_at, updated_at, production_id, ${PERF_FIELDS.join(', ')})
+       VALUES (?,?,?,?,${PERF_FIELDS.map(() => '?').join(',')})`
+    ).run(id, ts, ts, productionId, ...PERF_FIELDS.map((f) => patch[f] ?? null));
+  }
+  return getPerformanceRecord(productionId);
+}
+
+export function getPerformanceRecord(productionId) {
+  const db = getDb();
+  return db.prepare('SELECT * FROM performance_records WHERE production_id = ?').get(productionId) || null;
+}
+
+export function listAllPerformanceWithProduction() {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT pr.*, p.title as production_title, p.concept_id, p.hook_id, p.format, p.target_duration, p.storyboard
+       FROM performance_records pr JOIN productions p ON p.id = pr.production_id
+       ORDER BY pr.created_at DESC`
+    )
+    .all();
+  return rows.map((r) => ({ ...r, storyboard: safeParse(r.storyboard, []) }));
+}
+
+// ---------- Generation Outcome (on VIDEO_CLIP assets) ----------
+export function setAssetGenerationOutcome(assetId, outcome, failureReason) {
+  const db = getDb();
+  db.prepare('UPDATE assets SET generation_outcome = ?, failure_reason = ? WHERE id = ?').run(
+    outcome || null,
+    failureReason || null,
+    assetId
+  );
+  return getAsset(assetId);
+}
+
+export function listSuccessfulClipAssets() {
+  const db = getDb();
+  return db.prepare("SELECT * FROM assets WHERE type = 'VIDEO_CLIP' AND generation_outcome = 'SUCCESS'").all().map(parseAssetRow);
+}
+
+// ---------- Recent productions (for Format Fatigue) ----------
+export function listRecentProductionsWithDetail(limit = 5) {
+  const db = getDb();
+  const rows = db.prepare('SELECT * FROM productions ORDER BY created_at DESC LIMIT ?').all(limit);
+  return rows.map(parseProductionRow);
+}

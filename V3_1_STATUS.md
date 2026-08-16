@@ -97,7 +97,37 @@ RENDER 탭: RENDER PREVIEW (540x960) → 4.3초 만에 완료, 파일 400KB, has
 
 ## Phase 4 — Analytics, Channel DNA, Format Fatigue, Prompt Learning
 
-**상태: NOT STARTED**
+**상태: DONE**
+
+이 로컬 환경에는 실제로 YouTube에 게시되어 조회수가 쌓인 영상이 없다. 그래서 Phase 4의 목표를 "그럴듯한 DNA를 보여주는 것"이 아니라 **데이터가 부족하면 정직하게 부족하다고 말하고, 충분해지면 실제 숫자로만 계산하는 파이프라인**으로 잡았다 (스펙 65절 원칙 그대로).
+
+```
+1) 초기 상태 실측: /api/channel-dna → {"dna":{"sufficient":false,"count":0,"threshold":3}}
+   → 성과 1건만 입력한 뒤에도 여전히 count:1로 정직하게 "데이터 부족" 유지 (지어내지 않음)
+2) PERFORMANCE 탭: 수동 입력 폼(스펙 61절 필드 전부) → 저장 시 Production 상태가 자동으로 PUBLISHED로 전환.
+   미입력 필드는 화면에 UNKNOWN으로 표시(추측 안 함) — 스크린샷으로 확인
+3) CSV Import: "views,likes,unknown_col\n99999,500,foo" 입력
+   → views/likes만 반영, unknown_col은 무시하고 unknownColumns로 알려줌, 기존 다른 필드는 유지(덮어쓰지 않음)
+4) 성과가 3개 Production에 쌓이자(테스트 데이터 2건 seed) sufficient:true로 전환, 실제 평균 계산 확인:
+   - BEST HOOK TYPE(조회수): VISUAL_SHOCK(42000) > CURIOSITY(15000) > EMOTIONAL(8000) — 실제 입력값과 정확히 일치
+   - RETENTION DRIVER(음악 에너지): HIGH(71%) > MEDIUM(38%) — 실제 avg_percentage_viewed와 일치
+   - TOP PERFORMERS: views 내림차순 정렬 정확
+5) FORMAT FATIGUE: Performance 유무와 무관하게 항상 계산됨. 테스트 데이터 3개가 모두 같은 장르(cinematic_fantasy)를
+   쓰도록 seed했더니 "최근 3개 Production 중 3개가 동일한 장르를 사용했습니다" 경고를 정확히 생성
+6) Production Learning: ASSETS 탭에서 클립 하나를 SUCCESS, 다른 하나를 FAIL(Character Drift)로 기록
+   → PROMPT LIBRARY에 SUCCESS 클립의 Scene 1 Higgsfield 프롬프트만 정확히 노출, FAIL 클립은 제외됨을 확인
+7) Channel Fit Score 자체(트렌드 채점 공식)는 건드리지 않았다 — 대신 summarizeChannelDnaForPrompt()가 만든 실제
+   집계 텍스트를 Concept 생성 프롬프트에 컨텍스트로 주입하도록 코드 검토로 확인(라이브 Claude 호출 재검증은
+   비용 절감을 위해 생략 — 동일한 템플릿 패턴이 이 세션에서 이미 수십 회 검증됨)
+```
+
+브라우저(Playwright)로 CHANNEL DNA 페이지, PERFORMANCE 탭, ASSETS 탭의 Generation Outcome 셀렉터까지 전부 렌더링 확인했다.
+
+**Phase 4에서 의도적으로 하지 않은 것**:
+- **임계값 3은 통계적 유의성 검정이 아니다.** "이 정도는 있어야 비교가 의미 있다"는 투명한 규칙일 뿐이며 코드 주석과 UI에 명시했다.
+- **Content DNA 스냅샷 테이블을 별도로 만들지 않았다** — Channel DNA 페이지가 매번 Concept/Hook/AudioPlan 등 기존 저장 데이터를 조합해서 보여준다(중복 저장·정합성 문제 회피).
+- **Higgsfield API를 직접 호출해 생성 성공/실패를 자동 감지하지 않는다** — Generation Outcome은 사용자가 직접 기록한 실제 값이다.
+- **CSV import는 최소 기능이다** (헤더+1행, 우리 필드명과 정확히 일치하는 컬럼만 인식). 다양한 포맷 자동 인식은 하지 않는다.
 
 ## V3.2 (Auto Edit Director / Media Analysis / FFmpeg 편집 자동화)
 
@@ -177,4 +207,4 @@ AUTO EDIT 탭에서 Auto Edit Director 실행 (intensity: BALANCED):
 
 ---
 
-**VIRAL STUDIO V3.1 — PHASE 1, 2, 3 READY. V3.2 — PHASE A READY.** Phase 4와 V3.2의 나머지 범위(Timeline UI, Beat Sync, Render 연동, Learning)는 아직 준비되지 않았다.
+**VIRAL STUDIO V3.1 — PHASE 1, 2, 3, 4 READY. V3.2 — PHASE A READY.** V3.2의 나머지 범위(Timeline UI, Beat Sync, Edit Plan→렌더러 연동)만 아직 준비되지 않았다.

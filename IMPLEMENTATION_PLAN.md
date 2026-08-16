@@ -99,3 +99,29 @@ Phase 1~3(V3.1)가 실제로 동작하는 상태로 검증된 뒤 착수한다. 
 - **Auto Loop Engine, Speed Ramp 실제 렌더 적용, A/B Edit, Lock System, 버전 관리(v1/v2/v3)**: Edit Plan은 생성하지만 Phase 3 렌더러에 자동으로 연결해 적용하지는 않는다 (Phase 3 렌더러는 여전히 Effect Track을 SIMPLIFIED로 건너뛴다는 기존 원칙 유지).
 - **`.claude/agents/*.md` 4종, `/analyze-media` 등 10개 Skill**: 이 웹앱은 자체 API Route로 동일한 기능을 이미 제공하므로, Claude Code 세션 전용 Agent/Skill 파일은 이번 범위에서 생성하지 않는다.
 - **자동화된 코드 테스트 스위트**: 여전히 실제 서버 구동 + curl + ffprobe/프레임 검증 방식으로만 검증한다.
+
+---
+
+# Phase 4 — Analytics, Channel DNA, Format Fatigue, Prompt Learning: Implementation Plan
+
+## 핵심 제약: 이 환경에는 "실제 성과 데이터"가 없다
+
+Phase 4는 스펙 65절에서 이미 명시한다 — "데이터가 충분한 경우에만 실제 데이터 기반으로 생성한다... 실제 데이터가 없으면 추측하지 않는다." 이 로컬 세션에는 실제로 YouTube에 게시되어 조회수가 쌓인 영상이 없다. 따라서 Phase 4의 목표는 "그럴듯한 Channel DNA를 보여주는 것"이 아니라 **사용자가 실제 성과를 입력했을 때 정직하게 계산하고, 입력하지 않았을 때 정직하게 "데이터 부족"이라고 말하는 파이프라인을 만드는 것**이다.
+
+## 구현 범위
+
+| 구현 | 방식 |
+|---|---|
+| Performance 입력 | Production 워크스페이스의 PERFORMANCE 탭 — 스펙 61절 필드(조회수/노출수/시청 지속시간/좋아요/구독자 증가 등) 수동 입력 + CSV 붙여넣기 import |
+| Content DNA | 별도 스냅샷 테이블을 만들지 않는다 — Concept/Hook/PromptPack/AudioPlan/CaptionTrack/EffectTrack에 이미 저장된 실제 데이터를 Channel DNA 페이지에서 그때그때 조합해서 보여준다 (중복 저장·정합성 문제 회피) |
+| Channel DNA "Best X" | 실제 Performance가 입력된 Production이 **3개 이상**일 때만 계산한다 (임계값은 통계적 유의성 검정이 아니라 "이 정도는 있어야 비교가 의미 있다"는 투명한 규칙임을 명시). 미만이면 정확한 현재 개수와 함께 "데이터 부족"을 표시한다 |
+| Format Fatigue | Performance와 무관하게, 최근 5개 Production의 실제 저장된 Hook 타입/장르/Effect 패턴을 비교해 3개 이상 겹치면 경고 — 실측 메타데이터 기반이라 언제든 계산 가능 |
+| Production Learning | VIDEO_CLIP 에셋마다 Generation Outcome(SUCCESS/RETAKE/FAIL + 실패 사유)을 **사용자가 직접 기록**한다 — Higgsfield 생성은 이 앱 밖에서 일어나므로 우리가 결과를 관찰할 수 없고, 사용자 보고를 있는 그대로 저장한다 |
+| Prompt Learning | 별도 라이브러리 테이블을 만들지 않는다 — SUCCESS로 표시된 클립이 연결된 Scene의 Higgsfield 프롬프트를 Channel DNA 페이지에서 모아 보여준다 (이미 저장된 프롬프트를 재활용, 새 데이터 발명 없음) |
+| Channel Fit Score 연동 | Trend 자체 채점 공식(`computeChannelFitScore`)은 건드리지 않는다(점수 이중 반영·불안정성 방지). 대신 Channel DNA 요약을 Concept 생성 프롬프트에 텍스트 컨텍스트로 추가해 Claude가 실제 검증된 패턴을 참고하게 한다 |
+
+## 이번 세션에서 하지 않는 것
+
+- Channel DNA의 통계 검정(유의성 검정, 신뢰구간)은 하지 않는다 — 단순 평균 비교이며 "학습된 모델"이 아니다.
+- Higgsfield API를 직접 호출해 생성 성공/실패를 자동 감지하지 않는다 (자동화 경계 밖).
+- CSV import는 최소한의 컬럼 매핑만 지원한다 (완전한 다양한 포맷 자동 인식은 하지 않음).

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getEngine } from '../../../../lib/ai/engine';
 import { buildConceptPrompt } from '../../../../lib/prompts/conceptLab';
+import { summarizeChannelDnaForPrompt } from '../../../../lib/analytics/channelDna';
 import { getChannelProfile, getTrend, insertConcept } from '../../../../lib/db/repo';
 
 export async function POST(req) {
@@ -10,8 +11,9 @@ export async function POST(req) {
   const trend = getTrend(body.trendId);
   if (!trend) return NextResponse.json({ error: 'trend not found' }, { status: 404 });
   const profile = getChannelProfile();
+  const channelDnaSummary = summarizeChannelDnaForPrompt();
 
-  const prompt = buildConceptPrompt({ trend, profile });
+  const prompt = buildConceptPrompt({ trend, profile, channelDnaSummary });
   const system = '너는 오리지널리티를 지키는 콘텐츠 기획자다. 원본을 복제하지 않는다.';
 
   const engine = await getEngine();

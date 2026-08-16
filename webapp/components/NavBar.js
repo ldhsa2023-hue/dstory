@@ -9,6 +9,7 @@ const LINKS = [
   { href: '/trends', label: 'TREND RADAR' },
   { href: '/concepts', label: 'CONCEPT LAB' },
   { href: '/production', label: 'PRODUCTION' },
+  { href: '/channel-dna', label: 'CHANNEL DNA' },
   { href: '/settings', label: 'SETTINGS' },
 ];
 

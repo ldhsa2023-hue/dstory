@@ -211,5 +211,39 @@ function migrate(db) {
       started_at TEXT,
       completed_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS performance_records (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      production_id TEXT NOT NULL,
+      video_url TEXT,
+      publish_date TEXT,
+      views INTEGER,
+      impressions INTEGER,
+      viewed INTEGER,
+      swiped_away INTEGER,
+      avg_view_duration_sec REAL,
+      avg_percentage_viewed REAL,
+      likes INTEGER,
+      comments INTEGER,
+      shares INTEGER,
+      subscribers_gained INTEGER,
+      returning_viewers INTEGER
+    );
   `);
+
+  // Additive columns on pre-existing tables (node:sqlite has no
+  // "ADD COLUMN IF NOT EXISTS", so we probe and ignore the duplicate-column
+  // error on re-runs).
+  for (const stmt of [
+    "ALTER TABLE assets ADD COLUMN generation_outcome TEXT",
+    "ALTER TABLE assets ADD COLUMN failure_reason TEXT",
+  ]) {
+    try {
+      db.exec(stmt);
+    } catch {
+      // column already exists — fine
+    }
+  }
 }
