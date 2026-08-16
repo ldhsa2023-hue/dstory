@@ -41,9 +41,9 @@ ChatGPT: 트렌드 구조 분석 + 우리 장르 재해석 (prompts/chatgpt/tren
       ↓
 기존 캐릭터 시트/에셋 재사용 (신규 캐릭터 설계 생략) — 0분
       ↓
-Shorts 대본 1~2버전 작성 (templates/shorts_script_template.md 축약형) — 20분
+ChatGPT: Higgsfield 영상 생성 요청(JSON) 자동 생성 (prompts/chatgpt/trend-to-higgsfield-prompt.md) — 10분
       ↓
-Higgsfield 생성 (기존 캐릭터 레퍼런스 + 트렌드 구조 프롬프트) — 1~3시간
+Higgsfield 생성 — 위 JSON을 generate_video 파라미터로 그대로 제출 (get_cost로 크레딧 선확인) — 1~3시간
       ↓
 편집(자막/BGM, 가능 시 트렌드 사운드 사용 여부 확인) — 30분
       ↓
