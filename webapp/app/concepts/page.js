@@ -25,6 +25,9 @@ function ConceptLabInner() {
   const [generating, setGenerating] = useState(false);
   const [genResult, setGenResult] = useState(null);
   const [approvingId, setApprovingId] = useState(null);
+  const [manualResultText, setManualResultText] = useState('');
+  const [submittingManual, setSubmittingManual] = useState(false);
+  const [manualError, setManualError] = useState(null);
 
   useEffect(() => {
     if (trendId) {
@@ -57,6 +60,29 @@ function ConceptLabInner() {
       refreshConcepts(trendId);
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function handleManualSubmit() {
+    if (!trendId) return;
+    setSubmittingManual(true);
+    setManualError(null);
+    try {
+      const res = await fetch('/api/concepts/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trendId, manualResult: manualResultText }),
+      });
+      const data = await res.json();
+      if (data.mode === 'error') {
+        setManualError(data.error);
+        return;
+      }
+      setGenResult(data);
+      setManualResultText('');
+      refreshConcepts(trendId);
+    } finally {
+      setSubmittingManual(false);
     }
   }
 
@@ -98,9 +124,30 @@ function ConceptLabInner() {
             {generating ? 'GENERATING... (최대 ~2분)' : 'GENERATE CONCEPTS'}
           </button>
           {genResult?.mode === 'template' && (
-            <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg p-3 mt-3">
-              Claude CLI 미감지 — 아래 프롬프트를 직접 실행하세요.
-              <pre className="codebox mt-2">{genResult.prompt}</pre>
+            <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg p-3 mt-3 space-y-3">
+              <div>
+                Claude CLI 미감지 — 아래 프롬프트를 Claude/ChatGPT에 직접 실행한 뒤, 나온 JSON 배열 결과를 그대로 복사해서
+                아래 칸에 붙여넣고 등록하세요.
+                <pre className="codebox mt-2">{genResult.prompt}</pre>
+              </div>
+              <div>
+                <p className="label mb-1">결과 붙여넣기 (JSON 배열)</p>
+                <textarea
+                  className="input w-full font-mono text-xs"
+                  rows={8}
+                  placeholder='[{"title": "...", "logline": "...", ...}]'
+                  value={manualResultText}
+                  onChange={(e) => setManualResultText(e.target.value)}
+                />
+                <button
+                  className="btn-secondary text-xs mt-2"
+                  onClick={handleManualSubmit}
+                  disabled={submittingManual || !manualResultText.trim()}
+                >
+                  {submittingManual ? '등록 중...' : '결과 등록'}
+                </button>
+                {manualError && <p className="text-red-600 mt-2">오류: {manualError}</p>}
+              </div>
             </div>
           )}
           {genResult?.mode === 'error' && (
