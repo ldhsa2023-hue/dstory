@@ -808,11 +808,13 @@ export function listAllPerformanceWithProduction() {
 }
 
 // ---------- Generation Outcome (on VIDEO_CLIP assets) ----------
-export function setAssetGenerationOutcome(assetId, outcome, failureReason) {
+export function setAssetGenerationOutcome(assetId, outcome, failureReason, generationProvider) {
   const db = getDb();
-  db.prepare('UPDATE assets SET generation_outcome = ?, failure_reason = ? WHERE id = ?').run(
+  const current = getAsset(assetId);
+  db.prepare('UPDATE assets SET generation_outcome = ?, failure_reason = ?, generation_provider = ? WHERE id = ?').run(
     outcome || null,
     failureReason || null,
+    generationProvider !== undefined ? generationProvider || null : current?.generation_provider || null,
     assetId
   );
   return getAsset(assetId);
@@ -821,6 +823,16 @@ export function setAssetGenerationOutcome(assetId, outcome, failureReason) {
 export function listSuccessfulClipAssets() {
   const db = getDb();
   return db.prepare("SELECT * FROM assets WHERE type = 'VIDEO_CLIP' AND generation_outcome = 'SUCCESS'").all().map(parseAssetRow);
+}
+
+export function listOutcomeClipAssetsWithProvider() {
+  const db = getDb();
+  return db
+    .prepare(
+      "SELECT * FROM assets WHERE type = 'VIDEO_CLIP' AND generation_outcome IS NOT NULL AND generation_provider IS NOT NULL"
+    )
+    .all()
+    .map(parseAssetRow);
 }
 
 // ---------- Recent productions (for Format Fatigue) ----------
@@ -837,10 +849,36 @@ export function listRecentProductionsWithDetail(limit = 5) {
 export function insertVideoPrompts(productionId, provider, generationMode, globalVisualLock, clips) {
   const db = getDb();
   const id = genId('vprompt');
-  const payload = { global_visual_lock: globalVisualLock || '', clips: clips || [] };
+  const clipsWithProgress = (clips || []).map((c) => ({
+    ...c,
+    progress: { start_frame_done: false, end_frame_done: false, video_done: false },
+  }));
+  const payload = { global_visual_lock: globalVisualLock || '', clips: clipsWithProgress };
+  const row = db
+    .prepare('SELECT MAX(version) as maxVersion FROM video_prompts WHERE production_id = ? AND provider = ?')
+    .get(productionId, provider);
+  const version = (row?.maxVersion || 0) + 1;
   db.prepare(
-    'INSERT INTO video_prompts (id, created_at, production_id, provider, generation_mode, clips, version) VALUES (?,?,?,?,?,?,1)'
-  ).run(id, now(), productionId, provider, generationMode, JSON.stringify(payload));
+    'INSERT INTO video_prompts (id, created_at, production_id, provider, generation_mode, clips, version) VALUES (?,?,?,?,?,?,?)'
+  ).run(id, now(), productionId, provider, generationMode, JSON.stringify(payload), version);
+  return getVideoPromptsById(id);
+}
+
+export function updateVideoPromptClipProgress(id, sceneNumber, field, value) {
+  const db = getDb();
+  const record = getVideoPromptsById(id);
+  if (!record) return null;
+  const clips = record.clips.map((c) =>
+    c.scene_number === sceneNumber ? { ...c, progress: { ...c.progress, [field]: !!value } } : c
+  );
+  const payload = { global_visual_lock: record.global_visual_lock, clips };
+  db.prepare('UPDATE video_prompts SET clips = ? WHERE id = ?').run(JSON.stringify(payload), id);
+  return getVideoPromptsById(id);
+}
+
+export function setVideoPromptWinner(id, isWinner) {
+  const db = getDb();
+  db.prepare('UPDATE video_prompts SET is_winner = ? WHERE id = ?').run(isWinner ? 1 : 0, id);
   return getVideoPromptsById(id);
 }
 
@@ -868,7 +906,12 @@ export function listVideoPromptsByProduction(productionId) {
 
 function parseVideoPromptsRow(row) {
   const payload = safeParse(row.clips, { global_visual_lock: '', clips: [] });
-  return { ...row, global_visual_lock: payload.global_visual_lock || '', clips: payload.clips || [] };
+  return {
+    ...row,
+    global_visual_lock: payload.global_visual_lock || '',
+    clips: payload.clips || [],
+    is_winner: Boolean(row.is_winner),
+  };
 }
 
 // ---------- Asset Ingredient metadata ----------

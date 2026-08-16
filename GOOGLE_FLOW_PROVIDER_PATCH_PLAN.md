@@ -94,11 +94,42 @@ ALTER TABLE assets ADD COLUMN generation_provider TEXT;
 | 4~6 | Start/End 전용 심화 워크플로우 UI, Provider Performance/Learning 통계, Prompt Versioning(v1/v2/v3) | **이번 세션 범위 밖** |
 | 7 | Higgsfield 회귀 테스트 + Provider 전환 테스트 | 전체 구현 |
 
-## 9. 이번 세션에서 하지 않는 것 (정직하게 기록)
+## 10. Patch 4~6 추가 범위 (이어서 진행)
 
-- **Provider Performance/Learning 통계 페이지**는 만들지 않는다 — `generation_provider` 컬럼만 기록해 향후 Phase 4 Channel DNA에 합류시킬 수 있게 해둔다.
-- **Prompt Versioning(v1/v2/v3) 및 Winner Library 폴더 구조**는 만들지 않는다. `video_prompts.version`은 컬럼만 준비하고 재생성 시 1로 고정한다(진짜 버전 이력 관리는 다음 패치).
-- **COMPARE PROMPTS(Provider 나란히 비교) 버튼**은 만들지 않는다.
+절대 규칙(Higgsfield 미변경, Storyboard 재생성 금지, 자동화 금지)은 동일하게 유지한다. 세 Patch 모두 기존 인프라(video_prompts 테이블, Channel DNA 임계값 게이트 패턴)를 재사용하고 새 하위시스템을 만들지 않는다.
+
+### Patch 4 — Start/End Frame 전용 심화 워크플로우 UI
+
+문제: `start-end-frame`/`ingredients` 모드 클립은 이미 Start Frame / End Frame / Motion Bridge 3개 프롬프트를 각각 복사 가능한 카드로 보여주지만, 사용자가 "이 단계까지 했다"를 표시할 방법이 없다 — 여러 클립을 작업하다 어디까지 했는지 추적 불가.
+
+구현:
+- `video_prompts.clips[i]`에 `progress: { start_frame_done, end_frame_done, video_done }` 필드 추가 (새 컬럼 아님 — 기존 JSON payload 안에 저장).
+- `PATCH /api/production/video-prompts/[id]/clip-progress` — `{ sceneNumber, field, value }`로 단일 클립의 진행 상태만 갱신.
+- UI: 클립 카드 상단에 체크박스 3개(모드에 따라 Start Frame/End Frame/Video 또는 Video만) — 클릭 시 즉시 저장, refresh. 자동화 아님 — 사용자가 실제로 Google Flow에서 그 단계를 완료했다고 스스로 체크하는 수동 트래커.
+
+### Patch 5 — Provider Performance/Learning 통계
+
+문제: `assets.generation_provider` 컬럼은 이미 있지만 어디서도 값을 채우지 않는다 — Provider별 성공률을 계산할 데이터가 없다.
+
+구현:
+- ASSETS 탭: VIDEO_CLIP 자산의 Generation Outcome 옆에 Provider 선택 드롭다운 추가(기본값 = `production.video_provider`) → `generation_outcome`을 기록할 때 함께 저장.
+- `lib/analytics/channelDna.js`에 `computeProviderPerformance()` 추가: `generation_provider`+`generation_outcome`이 모두 기록된 VIDEO_CLIP 자산을 provider별로 그룹화, Provider당 기록 3건 미만이면 "데이터 부족"으로 정직하게 표시(Channel DNA와 동일한 임계값 원칙), 3건 이상이면 성공률(SUCCESS / 전체) 계산.
+- CHANNEL DNA 페이지에 "PROVIDER PERFORMANCE" 카드 추가 — 새 페이지를 만들지 않고 기존 페이지에 합류(중복 네비게이션 방지).
+
+### Patch 6 — Prompt Versioning + Winner Library
+
+문제: 현재 Provider별로 재생성할 때마다 `video_prompts`에 새 행이 들어가지만 `version`은 항상 1로 고정되고, UI는 `created_at` 기준 최신 행만 보여준다 — 과거 버전을 다시 볼 방법이 없고 "이 버전이 좋았다"를 표시할 수 없다.
+
+구현:
+- `insertVideoPrompts`: 동일 production+provider의 기존 최대 version을 조회해 `+1`로 저장(진짜 버전 증가, 하드코딩 1 제거). 과거 행은 삭제하지 않는다 — 그 자체가 버전 이력이다.
+- `video_prompts.is_winner INTEGER DEFAULT 0` 컬럼 추가. `PATCH /api/production/video-prompts/[id]/winner`로 토글.
+- PROMPTS 탭에 "VERSION HISTORY" 목록 추가 — 같은 provider의 모든 버전을 v1/v2/... 배지로 나열, 클릭하면 그 버전의 클립을 아래에 표시(현재는 최신 버전만 보여줬다면 이제 과거 버전도 조회 가능), ★ WINNER 토글 버튼 포함. "Winner Library"는 별도 폴더 구조 대신 이 목록을 Winner만 필터링하는 체크박스로 구현한다(과설계 방지).
+
+## 9. 이번 세션(Patch 1~3, 7)에서 하지 않았던 것 — Provider Performance/Prompt Versioning은 이후 Patch 4~6에서 구현 완료 (`V3_1_STATUS.md` 참고)
+
+- ~~Provider Performance/Learning 통계 페이지는 만들지 않는다~~ → **Patch 5에서 구현 완료.** `generation_provider` 컬럼에 실제로 값을 기록하고 Channel DNA 페이지에 카드로 노출한다.
+- ~~Prompt Versioning(v1/v2/v3) 및 Winner Library 폴더 구조는 만들지 않는다~~ → **Patch 6에서 구현 완료.** `video_prompts.version`이 실제로 증가하며 과거 버전을 조회/★Winner 표시할 수 있다.
+- **COMPARE PROMPTS(Provider 나란히 비교) 버튼**은 여전히 만들지 않는다.
 - **`.claude/agents/google-flow-specialist.md`, `.claude/skills/google-flow-prompt/`**는 만들지 않는다 — 기존 원칙(웹앱 API가 동일 기능 제공)을 유지한다.
 - **Export 패치(google-flow-prompts.md/json 파일 생성)**는 만들지 않는다.
 - **First-Run Wizard**는 애초에 이 프로젝트에 존재하지 않으므로(V3.1에서도 미구현) 이번에도 만들지 않는다.

@@ -254,6 +254,7 @@ function migrate(db) {
     "ALTER TABLE assets ADD COLUMN ingredient_type TEXT",
     "ALTER TABLE assets ADD COLUMN generation_provider TEXT",
     "ALTER TABLE productions ADD COLUMN video_provider TEXT DEFAULT 'higgsfield'",
+    "ALTER TABLE video_prompts ADD COLUMN is_winner INTEGER DEFAULT 0",
   ]) {
     try {
       db.exec(stmt);

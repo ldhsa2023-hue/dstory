@@ -5,6 +5,6 @@ export async function PATCH(req, { params }) {
   const body = await req.json().catch(() => ({}));
   const asset = getAsset(params.id);
   if (!asset) return NextResponse.json({ error: 'not found' }, { status: 404 });
-  const updated = setAssetGenerationOutcome(params.id, body.outcome, body.failureReason);
+  const updated = setAssetGenerationOutcome(params.id, body.outcome, body.failureReason, body.generationProvider);
   return NextResponse.json(updated);
 }

@@ -256,15 +256,61 @@ UI (Playwright 스크린샷으로 확인):
 레이아웃과 데이터 바인딩을 육안 검증했다.
 ```
 
-## 이번 패치에서 의도적으로 하지 않은 것 (정직하게 기록)
+## 이번 패치(Patch 1~3, 7)에서 의도적으로 하지 않았던 것 — 이후 Patch 4~6에서 이어서 구현함
 
-`GOOGLE_FLOW_PROVIDER_PATCH_PLAN.md`에 명시된 대로 다음은 이번 세션 범위에서 제외했다:
-- Provider Performance/Learning 통계 페이지, Prompt Versioning(v1/v2/v3) + Winner Library 폴더, COMPARE PROMPTS 버튼
-- `.claude/agents/google-flow-specialist.md`, `.claude/skills/google-flow-prompt/`
-- Export 패치(google-flow-prompts.md/json 파일 내보내기), First-Run Wizard
-- 임베딩 기반 자동 Continuity 불일치 감지(현재는 Claude가 프롬프트 내에서 서술로만 continuity_notes를 판단)
-- Google/Higgsfield 로그인, API 호출, 브라우저 제어, 다운로드 등 일체의 자동화 — 모든 생성은 사용자가 프롬프트를 복사해 각 서비스에 수동으로 붙여넣는 방식 그대로 유지된다.
+`GOOGLE_FLOW_PROVIDER_PATCH_PLAN.md`에 명시된 대로 Patch 1~3, 7 세션에서는 Provider Performance 통계, Prompt Versioning, Winner Library, COMPARE PROMPTS를 제외했었다. 아래 "Patch 4~6" 섹션에서 이 중 COMPARE PROMPTS를 뺀 나머지를 실제로 구현하고 검증했다.
 
 ---
 
-**VIRAL STUDIO V3.1 — PHASE 1, 2, 3, 4 READY. V3.2 — PHASE A READY.** V3.2의 나머지 범위(Timeline UI, Beat Sync, Edit Plan→렌더러 연동)만 아직 준비되지 않았다.
+## Google Flow Patch 4~6 — Start/End 워크플로우, Provider Performance, Prompt Versioning
+
+**상태: DONE (`GOOGLE_FLOW_PROVIDER_PATCH_PLAN.md` 10번 섹션 범위)**
+
+## 실제로 구현하고 검증한 것
+
+```
+Patch 4 — Generation Steps 체크리스트:
+  → video_prompts.clips[i].progress { start_frame_done, end_frame_done, video_done } 필드를
+    JSON payload 안에 추가(신규 컬럼 없이). start-end-frame/ingredients 모드 클립은 Start
+    Frame/End Frame/Video 3개 체크박스, 그 외 모드는 Video 1개만 노출.
+  → PATCH /api/production/video-prompts/[id]/clip-progress 실제 호출로 저장 확인.
+  → Playwright로 브라우저에서 체크박스 클릭 → DB에 즉시 반영되는 것을 SQLite 직접 조회로
+    확인(진짜 클릭 → API → DB 저장 → refresh 전체 루프 검증, 목업 아님).
+
+Patch 5 — Provider Performance:
+  → ASSETS 탭 VIDEO_CLIP의 Generation Outcome에 Provider 선택 드롭다운 추가, 저장 시
+    assets.generation_provider 컬럼에 실제로 기록됨을 확인(이전까지는 컬럼만 있고 채워진
+    적이 없었다).
+  → lib/analytics/channelDna.js에 computeProviderPerformance() 추가 — Channel DNA와
+    동일한 임계값(3건) 원칙 재사용. 실측: google-flow에 SUCCESS 2건 + RETAKE 1건을
+    기록하자 정확히 "성공률 66.7% (2/3)"로 계산됨을 확인. higgsfield는 1건만 기록해
+    임계값 미달 → "데이터 부족 (1/3건)"으로 정직하게 표시됨을 확인(추측하지 않음).
+  → CHANNEL DNA 페이지에 PROVIDER PERFORMANCE 카드로 렌더링, 스크린샷으로 두 상태
+    (충분/부족) 모두 확인.
+
+Patch 6 — Prompt Versioning + Winner:
+  → insertVideoPrompts가 동일 production+provider의 기존 최대 version을 조회해 실제로
+    +1 증가시키도록 수정(이전에는 항상 1로 고정, 매번 새 프롬프트를 만들면 과거 버전을
+    다시 볼 방법이 없었음). 실측: 동일 production+provider로 두 번 연속 생성 →
+    version 1, 2가 각각 별도 행으로 DB에 남고 과거 버전(v1)도 그대로 조회 가능함을 확인.
+  → video_prompts.is_winner 컬럼 + PATCH /api/production/video-prompts/[id]/winner.
+  → PROMPTS 탭에 VERSION HISTORY 목록(v1/v2... 배지 + ★ Winner 토글) 추가. v1을
+    Winner로 표시하고 v2가 기본 선택된 상태에서 v1을 클릭하면 실제로 v1의 클립 내용
+    (다른 flow_prompt 등)으로 전환되는 것을 스크린샷으로 확인 — "Winner Library"는
+    별도 폴더 구조 대신 이 목록의 "Winner만 보기" 체크박스로 구현했다(과설계 방지).
+
+`next build` 클린 컴파일, Playwright 스크린샷(VERSION HISTORY, GENERATION STEPS, PROVIDER
+PERFORMANCE 카드) 확인.
+```
+
+## Patch 4~6에서도 여전히 하지 않은 것 (정직하게 기록)
+
+- **COMPARE PROMPTS(Provider 나란히 비교) 버튼**: 만들지 않았다. VERSION HISTORY로 버전 간 전환은 가능하지만 두 버전을 동시에 나란히 보여주는 화면은 없다.
+- **`.claude/agents/google-flow-specialist.md`, `.claude/skills/google-flow-prompt/`**: 여전히 만들지 않는다 — 웹앱 API가 동일 기능을 제공하는 기존 원칙 유지.
+- **Export 패치(google-flow-prompts.md/json 파일 내보내기), First-Run Wizard**: 여전히 범위 밖.
+- **임베딩 기반 자동 Continuity 불일치 감지**: 여전히 Claude의 서술적 판단(continuity_notes)으로만 대체.
+- **Google/Higgsfield 자동화**: 여전히 전혀 하지 않는다 — 모든 생성은 사용자가 프롬프트를 복사해 수동으로 붙여넣는다.
+
+---
+
+**VIRAL STUDIO V3.1 — PHASE 1, 2, 3, 4 READY. V3.2 — PHASE A READY. Google Flow Provider Patch 1~7 전체 READY.** V3.2의 나머지 범위(Timeline UI, Beat Sync, Edit Plan→렌더러 연동)와 COMPARE PROMPTS/Export/Wizard만 아직 준비되지 않았다.

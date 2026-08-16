@@ -97,6 +97,8 @@ export default function ProductionWorkspacePage({ params }) {
   const [audioIntent, setAudioIntent] = useState('NATURAL_ONLY');
   const [generatingVideoPrompts, setGeneratingVideoPrompts] = useState(false);
   const [videoPromptGenResult, setVideoPromptGenResult] = useState(null);
+  const [selectedVideoPromptId, setSelectedVideoPromptId] = useState(null);
+  const [showOnlyWinners, setShowOnlyWinners] = useState(false);
 
   const [generatingAudio, setGeneratingAudio] = useState(false);
   const [audioGenResult, setAudioGenResult] = useState(null);
@@ -144,6 +146,10 @@ export default function ProductionWorkspacePage({ params }) {
   useEffect(() => {
     if (bundle?.production?.video_provider) setVideoProvider(bundle.production.video_provider);
   }, [bundle?.production?.video_provider]);
+
+  useEffect(() => {
+    setSelectedVideoPromptId(null);
+  }, [videoProvider]);
 
   function refresh() {
     fetch(`/api/production/${id}`)
@@ -208,6 +214,24 @@ export default function ProductionWorkspacePage({ params }) {
     } finally {
       setGeneratingVideoPrompts(false);
     }
+  }
+
+  async function handleToggleClipProgress(videoPromptId, sceneNumber, field, value) {
+    await fetch(`/api/production/video-prompts/${videoPromptId}/clip-progress`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sceneNumber, field, value }),
+    });
+    refresh();
+  }
+
+  async function handleToggleWinner(videoPromptId, isWinner) {
+    await fetch(`/api/production/video-prompts/${videoPromptId}/winner`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isWinner }),
+    });
+    refresh();
   }
 
   async function handleGenerateAudio() {
@@ -392,11 +416,11 @@ export default function ProductionWorkspacePage({ params }) {
     if (res.ok) refresh();
   }
 
-  async function handleSetGenerationOutcome(assetId, outcome, failureReason) {
+  async function handleSetGenerationOutcome(assetId, outcome, failureReason, generationProvider) {
     await fetch(`/api/production/assets/${assetId}/outcome`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ outcome, failureReason }),
+      body: JSON.stringify({ outcome, failureReason, generationProvider }),
     });
     refresh();
   }
@@ -422,7 +446,12 @@ export default function ProductionWorkspacePage({ params }) {
   if (!production) return <p className="text-sm text-red-500">Production을 찾을 수 없습니다.</p>;
   const latestJob = renderJobs?.[0];
   const latestEditPlan = editPlans?.[0];
-  const currentVideoPrompt = videoPrompts?.find((vp) => vp.provider === videoProvider);
+  const videoPromptVersions = (videoPrompts || [])
+    .filter((vp) => vp.provider === videoProvider)
+    .sort((a, b) => b.version - a.version);
+  const currentVideoPrompt =
+    (selectedVideoPromptId && videoPromptVersions.find((vp) => vp.id === selectedVideoPromptId)) ||
+    videoPromptVersions[0];
 
   return (
     <div className="space-y-6">
@@ -692,6 +721,47 @@ export default function ProductionWorkspacePage({ params }) {
                 )}
               </div>
 
+              {videoPromptVersions.length > 0 && (
+                <div className="card p-5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="label">VERSION HISTORY ({videoPromptVersions.length})</p>
+                    <label className="text-xs text-neutral-500 flex items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={showOnlyWinners}
+                        onChange={(e) => setShowOnlyWinners(e.target.checked)}
+                      />
+                      Winner만 보기
+                    </label>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    {videoPromptVersions
+                      .filter((vp) => !showOnlyWinners || vp.is_winner)
+                      .map((vp) => (
+                        <div key={vp.id} className="flex items-center gap-1">
+                          <button
+                            onClick={() => setSelectedVideoPromptId(vp.id)}
+                            className={`px-3 py-1 rounded-full text-xs font-semibold border ${
+                              currentVideoPrompt?.id === vp.id
+                                ? 'bg-accent text-white border-accent'
+                                : 'border-neutral-300 text-neutral-600'
+                            }`}
+                          >
+                            v{vp.version}
+                          </button>
+                          <button
+                            onClick={() => handleToggleWinner(vp.id, !vp.is_winner)}
+                            title={vp.is_winner ? 'Winner 해제' : 'Winner로 표시'}
+                            className={`text-sm ${vp.is_winner ? 'text-amber-500' : 'text-neutral-300'}`}
+                          >
+                            ★
+                          </button>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
               {currentVideoPrompt?.global_visual_lock && (
                 <div className="card p-5">
                   <div className="flex items-center justify-between">
@@ -715,6 +785,44 @@ export default function ProductionWorkspacePage({ params }) {
                   </div>
                   {c.mode_reason && <p className="text-xs text-neutral-400">추천 근거: {c.mode_reason}</p>}
                   {c.complexity_note && <p className="text-xs text-red-600">{c.complexity_note}</p>}
+
+                  <div className="flex gap-3 text-xs bg-neutral-50 rounded-lg p-2">
+                    <span className="text-neutral-400 font-semibold">GENERATION STEPS</span>
+                    {(c.recommended_mode === 'start-end-frame' || c.recommended_mode === 'ingredients') && (
+                      <>
+                        <label className="flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            checked={!!c.progress?.start_frame_done}
+                            onChange={(e) =>
+                              handleToggleClipProgress(currentVideoPrompt.id, c.scene_number, 'start_frame_done', e.target.checked)
+                            }
+                          />
+                          Start Frame
+                        </label>
+                        <label className="flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            checked={!!c.progress?.end_frame_done}
+                            onChange={(e) =>
+                              handleToggleClipProgress(currentVideoPrompt.id, c.scene_number, 'end_frame_done', e.target.checked)
+                            }
+                          />
+                          End Frame
+                        </label>
+                      </>
+                    )}
+                    <label className="flex items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={!!c.progress?.video_done}
+                        onChange={(e) =>
+                          handleToggleClipProgress(currentVideoPrompt.id, c.scene_number, 'video_done', e.target.checked)
+                        }
+                      />
+                      Video
+                    </label>
+                  </div>
 
                   <div className="grid md:grid-cols-2 gap-2 text-xs text-neutral-500">
                     <p>Start State: {c.start_state}</p>
@@ -838,8 +946,15 @@ export default function ProductionWorkspacePage({ params }) {
                       <select
                         className="input w-auto"
                         value={a.generation_outcome || ''}
-                        onChange={(e) => handleSetGenerationOutcome(a.id, e.target.value || null, a.failure_reason)}
-                        title="Generation Outcome — Higgsfield에서 이 클립 생성이 실제로 어땠는지 기록"
+                        onChange={(e) =>
+                          handleSetGenerationOutcome(
+                            a.id,
+                            e.target.value || null,
+                            a.failure_reason,
+                            a.generation_provider || videoProvider
+                          )
+                        }
+                        title="Generation Outcome — 이 클립이 실제로 어떤 Provider에서 어떻게 생성됐는지 기록"
                       >
                         {GENERATION_OUTCOMES.map((o) => (
                           <option key={o} value={o}>
@@ -851,12 +966,31 @@ export default function ProductionWorkspacePage({ params }) {
                         <select
                           className="input w-auto"
                           value={a.failure_reason || ''}
-                          onChange={(e) => handleSetGenerationOutcome(a.id, a.generation_outcome, e.target.value)}
+                          onChange={(e) =>
+                            handleSetGenerationOutcome(a.id, a.generation_outcome, e.target.value, a.generation_provider)
+                          }
                         >
                           <option value="">사유 선택</option>
                           {FAILURE_REASONS.map((r) => (
                             <option key={r} value={r}>
                               {r}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {a.generation_outcome && (
+                        <select
+                          className="input w-auto"
+                          value={a.generation_provider || ''}
+                          onChange={(e) =>
+                            handleSetGenerationOutcome(a.id, a.generation_outcome, a.failure_reason, e.target.value || null)
+                          }
+                          title="이 클립을 실제로 생성한 Provider — Provider Performance 통계에 사용됨"
+                        >
+                          <option value="">Provider 미기록</option>
+                          {VIDEO_PROVIDERS.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
                             </option>
                           ))}
                         </select>

@@ -13,7 +13,7 @@ export default function ChannelDnaPage() {
   }, []);
 
   if (!data) return <p className="text-sm text-neutral-400">불러오는 중...</p>;
-  const { dna, formatFatigue, promptLibrary } = data;
+  const { dna, formatFatigue, promptLibrary, providerPerformance } = data;
 
   return (
     <div className="space-y-6">
@@ -93,6 +93,39 @@ export default function ChannelDnaPage() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+      </div>
+
+      <div className="card p-5">
+        <p className="label mb-2">PROVIDER PERFORMANCE</p>
+        {(!providerPerformance || providerPerformance.providers.length === 0) ? (
+          <p className="text-sm text-neutral-400">
+            아직 기록이 없습니다. ASSETS 탭에서 클립의 Generation Outcome을 기록할 때 Provider를 함께 선택하면 여기 표시됩니다.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {providerPerformance.providers.map((p) => (
+              <div key={p.provider} className="border border-neutral-100 rounded-lg p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold">{p.provider}</span>
+                  {p.sufficient ? (
+                    <span className="text-sm text-neutral-500">
+                      성공률 {p.successRate}% ({p.successCount}/{p.count})
+                    </span>
+                  ) : (
+                    <span className="text-xs text-neutral-400">
+                      데이터 부족 ({p.count}/{p.threshold}건)
+                    </span>
+                  )}
+                </div>
+                {p.sufficient && (
+                  <p className="text-xs text-neutral-400 mt-1">
+                    SUCCESS {p.successCount} · RETAKE {p.retakeCount} · FAIL {p.failCount}
+                  </p>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>

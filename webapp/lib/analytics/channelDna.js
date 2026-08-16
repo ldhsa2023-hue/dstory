@@ -2,6 +2,7 @@ import {
   listAllPerformanceWithProduction,
   listRecentProductionsWithDetail,
   listSuccessfulClipAssets,
+  listOutcomeClipAssetsWithProvider,
   getConcept,
   getHook,
   getAudioPlan,
@@ -9,6 +10,10 @@ import {
   getEffectTrack,
   getCaptionTrack,
 } from '../db/repo';
+
+// Same "not a significance test" caveat as CHANNEL_DNA_THRESHOLD — just a
+// minimum sample size below which we refuse to state a success rate.
+export const PROVIDER_PERFORMANCE_THRESHOLD = 3;
 
 // "Enough data to compare" is a hand-picked minimum, not a significance
 // test — documented in IMPLEMENTATION_PLAN.md's Phase 4 section. Below this,
@@ -135,6 +140,36 @@ export function checkFormatFatigue(limit = 5) {
   }
 
   return { checked: withDetail.length, productions: withDetail, warnings };
+}
+
+// Provider Performance: assets.generation_provider is only populated when the
+// user explicitly picks a provider while recording a clip's Generation
+// Outcome (ASSETS tab) — nothing here infers or backfills it, so a provider
+// with zero recorded outcomes simply doesn't appear.
+export function computeProviderPerformance() {
+  const assets = listOutcomeClipAssetsWithProvider();
+  const byProvider = new Map();
+  for (const a of assets) {
+    if (!byProvider.has(a.generation_provider)) byProvider.set(a.generation_provider, []);
+    byProvider.get(a.generation_provider).push(a);
+  }
+
+  const providers = [...byProvider.entries()].map(([provider, rows]) => {
+    const sufficient = rows.length >= PROVIDER_PERFORMANCE_THRESHOLD;
+    const successCount = rows.filter((r) => r.generation_outcome === 'SUCCESS').length;
+    return {
+      provider,
+      count: rows.length,
+      threshold: PROVIDER_PERFORMANCE_THRESHOLD,
+      sufficient,
+      successRate: sufficient ? Math.round((successCount / rows.length) * 1000) / 10 : null,
+      successCount,
+      retakeCount: rows.filter((r) => r.generation_outcome === 'RETAKE').length,
+      failCount: rows.filter((r) => r.generation_outcome === 'FAIL').length,
+    };
+  });
+
+  return { providers: providers.sort((a, b) => (b.successRate ?? -1) - (a.successRate ?? -1)) };
 }
 
 // Prompt Learning: no separate library table — just surface the Higgsfield

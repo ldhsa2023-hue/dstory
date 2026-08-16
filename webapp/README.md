@@ -113,13 +113,21 @@ PRODUCTION › PROMPTS 탭: VIDEO GENERATION PROVIDER에서 Higgsfield / Google 
     단일 Flow Prompt(image-to-video/text-to-video일 때), Continuity Notes, Negative
     Constraints, Complexity Warning을 표시
   → 각 프롬프트를 COPY해서 Google Flow/Veo에 직접 붙여넣어 사용 (자동 업로드/실행 없음)
+  → 클립 카드의 GENERATION STEPS 체크박스(Start Frame/End Frame/Video)로 어디까지 작업했는지
+    수동으로 표시 (Google Flow/Veo에서 실제로 그 단계를 완료했다고 스스로 체크하는 트래커)
+  → VERSION HISTORY에서 동일 Provider로 재생성한 과거 버전(v1, v2, ...)을 모두 조회 가능,
+    ★로 Winner 버전 표시 + "Winner만 보기" 필터
 PRODUCTION › ASSETS 탭: REFERENCE_IMAGE/GENERATED_IMAGE에 Ingredient 체크 + 이름 + 타입
   (CHARACTER/FOOD/OBJECT/...) 태깅 → Ingredients 모드로 생성 시 해당 이름이 프롬프트
   컨텍스트로 전달되어 클립의 ingredients_used에 실제로 반영됨 (하드코딩이 아님)
+  → VIDEO_CLIP의 Generation Outcome 기록 시 Provider도 함께 선택 → CHANNEL DNA의
+    Provider Performance 집계에 사용됨
 SETTINGS 페이지: Default Video Provider 지정 시 새로 승인되는 Production에 자동 반영
+CHANNEL DNA 페이지: PROVIDER PERFORMANCE 카드 — Provider별 Generation Outcome이
+  3건 이상 쌓이면 실제 성공률(SUCCESS/전체)을 계산, 미달이면 "데이터 부족"을 정직하게 표시
 ```
 
-Google Flow/Generic 프롬프트는 Higgsfield의 `prompt_pack`과 완전히 분리된 `video_prompts` 테이블에 provider별로 독립 저장되며, `/api/production/prompts/generate`(Higgsfield 전용 경로)는 이 패치에서 한 줄도 수정하지 않았다 — 자세한 검증 내역은 `V3_1_STATUS.md`의 "Google Flow / Veo Video Provider Integration Patch" 섹션 참고.
+Google Flow/Generic 프롬프트는 Higgsfield의 `prompt_pack`과 완전히 분리된 `video_prompts` 테이블에 provider별로 독립 저장되며, `/api/production/prompts/generate`(Higgsfield 전용 경로)는 이 패치에서 한 줄도 수정하지 않았다 — 자세한 검증 내역은 `V3_1_STATUS.md`의 "Google Flow / Veo Video Provider Integration Patch"와 "Google Flow Patch 4~6" 섹션 참고.
 
 ## 아키텍처
 
