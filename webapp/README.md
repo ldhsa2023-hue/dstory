@@ -99,6 +99,23 @@ PRODUCTION › TIMELINE 탭(신규):
 
 Beat Analyzer는 ffmpeg `aevalsrc`로 합성한 120 BPM/90 BPM 클릭 트랙으로 정확도를 검증했고(둘 다 오차 1 BPM 이내로 정확히 검출), 완전 무음에서는 BPM을 산출하지 않고 정직하게 "산출 안 됨"을 반환하는 것도 확인했다. Timeline 드래그 트림은 Playwright로 실제 마우스 드래그 후 페이지를 하드 리로드해 SQLite에 실제로 저장됐는지까지 확인했다 — 이 검증 과정에서 무음 온셋 오검출 버그와 트림 저장 시 stale closure로 조용히 저장 안 되던 버그를 각각 발견해 수정했다. 자세한 내용은 `V3_1_STATUS.md`의 "V3.2 나머지 범위 — Timeline UI + Beat Sync" 섹션과 `V32_TIMELINE_BEATSYNC_PLAN.md` 참고.
 
+## Edit Plan → 렌더러 자동 연동 (실제 동작 확인됨)
+
+```
+PRODUCTION › AUTO EDIT 탭에서 Edit Plan을 생성해두면 RENDER 탭에서 RENDER 버튼을 누를 때
+자동으로 반영된다 — 별도 설정 불필요:
+  PUNCH_ZOOM/MICRO_ZOOM/PAYOFF_EMPHASIS → 구간 확대(scale+crop)
+  SPEED_RAMP → 구간 배속(setpts)
+  FREEZE → 구간 정지(tpad)
+  TRIM → 구간 삭제(concat에서 제외)
+  HOOK_TEXT_TIMING → 선택된 Hook 텍스트를 drawtext로 오버레이(한글 폰트 자동 탐색)
+CUT/TRANSITION/IMPACT_SFX_CUE/MUSIC_CUE/LOOP_SUGGESTION 등은 필터가 불안정하거나(xfade)
+실제 매칭 자산이 없어 여전히 적용하지 않으며, RENDER 탭에 "EDIT PLAN 적용 결과 (N/M개 적용)"로
+각 결정이 적용/미적용됐는지와 그 이유가 그대로 표시된다.
+```
+
+합성 테스트 클립(패턴+타임스탬프 오버레이)에 각 타입을 하나씩 넣은 EditPlan으로 실제 렌더를 실행해 검증했다: 출력 길이가 TRIM/SPEED_RAMP 반영분만큼 정확히 줄어든 것을 ffprobe로, PUNCH_ZOOM이 실제로 확대된 프레이밍인지를 프레임 추출로, SPEED_RAMP이 정확히 1.5배속인지를 소스/출력 타임스탬프 델타 비율 계산으로, FREEZE 구간 두 지점이 완전히 동일한 프레임인지를 직접 대조로 확인했다. 이 과정에서 시스템 기본 폰트에 한글 글리프가 없어 HOOK_TEXT_TIMING이 빈 화면으로 렌더링되는 버그와, 고정 폰트 크기가 PREVIEW 캔버스에서 화면 밖으로 잘려나가는 버그를 발견해 각각 크로스플랫폼 폰트 탐색(`lib/render/fontResolver.js`)과 캔버스 비례 폰트 크기로 수정했다. Edit Plan이 없는 Production은 패치 이전과 완전히 동일한 필터 그래프로 렌더링됨을 확인해 회귀가 없음도 검증했다. 자세한 내용은 `V3_1_STATUS.md`의 "Edit Plan → 렌더러 자동 연동" 섹션과 `EDIT_PLAN_RENDERER_INTEGRATION_PLAN.md` 참고.
+
 ## Phase 4 워크플로우 — Analytics / Channel DNA (실제 동작 확인됨)
 
 ```
@@ -162,7 +179,7 @@ Google Flow/Generic 프롬프트는 Higgsfield의 `prompt_pack`과 완전히 분
 | Visual Provider | `lib/ai/visualProvider.js` — `ClaudeVisualProvider`(`claude -p --allowedTools Read`로 실제 이미지 판독) / `ManualVisualProvider`(fallback) |
 | 프롬프트 빌더 | `lib/prompts/{trendResearch,conceptLab,hookEngine,promptStudio,audioDirector,captionEngine,effectDirector,publishPack,autoEditDirector}.js` |
 | 채점 로직 | `lib/scoring.js` — Channel Fit Score, Today Top3 랭킹, Higgsfield 모델 카탈로그. `lib/media/hookDetector.js` — Hook Readiness 투명 공식 |
-| 미디어/렌더 | `lib/media/{paths,ffprobe,technicalValidation,signalAnalysis,keyframes,analyzeClip,timelineMap}.js`, `lib/render/{manifest,ffmpegCompiler,runner}.js`(Render Manifest → FFmpeg 인자 배열 → 실행) |
+| 미디어/렌더 | `lib/media/{paths,ffprobe,technicalValidation,signalAnalysis,keyframes,analyzeClip,timelineMap}.js`, `lib/render/{manifest,ffmpegCompiler,runner,editApply,fontResolver}.js`(Render Manifest → FFmpeg 인자 배열 → 실행, EditDecision→세그먼트 필터 매핑) |
 | Beat Sync | `lib/audio/pcmDecode.js`(ffmpeg → mono f32le PCM), `lib/audio/beatAnalyzer.js`(에너지 기반 온셋 검출 + IOI 히스토그램 BPM 추정 — 외부 라이브러리 없음) |
 | Analytics | `lib/analytics/channelDna.js` — 임계값 게이트(≥3건), Best-X 그룹 평균, Format Fatigue, Prompt Library 파생 |
 

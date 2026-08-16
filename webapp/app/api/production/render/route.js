@@ -5,6 +5,8 @@ import {
   getCaptionTrack,
   getEffectTrack,
   listRenderJobsByProduction,
+  listEditPlansByProduction,
+  getHook,
 } from '../../../../lib/db/repo';
 import { runRender } from '../../../../lib/render/runner';
 import { isFfprobeAvailable } from '../../../../lib/media/ffprobe';
@@ -48,7 +50,17 @@ export async function POST(req) {
   const assets = listAssetsByProduction(production.id);
   const captionTrack = getCaptionTrack(production.id);
   const effectTrack = getEffectTrack(production.id);
+  const editPlan = listEditPlansByProduction(production.id)[0] || null;
+  const hook = production.hook_id ? getHook(production.hook_id) : null;
 
-  const job = await runRender({ production, assets, captionTrack, effectTrack, preset });
+  const job = await runRender({
+    production,
+    assets,
+    captionTrack,
+    effectTrack,
+    editPlan,
+    hookText: hook?.hook_text || null,
+    preset,
+  });
   return NextResponse.json(job, { status: job.status === 'COMPLETED' ? 201 : 200 });
 }

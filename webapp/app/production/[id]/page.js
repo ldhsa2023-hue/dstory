@@ -1790,9 +1790,11 @@ export default function ProductionWorkspacePage({ params }) {
           <div className="card p-5 space-y-3">
             <p className="label">POST STUDIO — LOCAL RENDER</p>
             <p className="text-xs text-neutral-500">
-              ASSETS 탭에서 각 Scene에 영상 클립을 연결하고, CAPTIONS/AUDIO를 먼저 생성해 두면 이 렌더에 반영됩니다. 이
-              로컬 렌더러는 클립 연결·자막 하드섭·배경음악 믹스·화면비 변환·컷 순서까지 지원하며, Punch
-              Zoom/Speed Ramp 등 고급 Effect는 아직 적용하지 않습니다(SIMPLIFIED로 표시).
+              ASSETS 탭에서 각 Scene에 영상 클립을 연결하고, CAPTIONS/AUDIO를 먼저 생성해 두면 이 렌더에 반영됩니다. AUTO
+              EDIT 탭에서 만든 최신 Edit Plan이 있으면 PUNCH_ZOOM/MICRO_ZOOM/PAYOFF_EMPHASIS(확대)·SPEED_RAMP(배속)·
+              FREEZE(정지)·TRIM(구간 삭제)·HOOK_TEXT_TIMING(텍스트 오버레이)이 실제로 렌더에 적용됩니다. TRANSITION 등
+              나머지 타입은 필터 그래프가 불안정해질 위험 때문에 이번에도 적용하지 않으며, 렌더 후 어떤 결정이
+              적용/미적용됐는지 아래에 그대로 표시됩니다.
             </p>
             <div className="flex gap-2">
               {RENDER_PRESETS.map((p) => (
@@ -1829,6 +1831,30 @@ export default function ProductionWorkspacePage({ params }) {
               )}
 
               {latestJob.status === 'FAILED' && <p className="text-sm text-red-600">{latestJob.error}</p>}
+
+              {latestJob.report?.decision_report?.length > 0 && (
+                <div className="space-y-1">
+                  <p className="label">EDIT PLAN 적용 결과 ({latestJob.report.decision_report.filter((d) => d.applied).length}/
+                    {latestJob.report.decision_report.length}개 적용)</p>
+                  <ul className="text-xs space-y-1">
+                    {latestJob.report.decision_report.map((d, i) => (
+                      <li
+                        key={i}
+                        className={`border rounded-lg p-2 ${
+                          d.applied ? 'border-accent2/30 bg-accent2/5' : 'border-neutral-200 bg-neutral-50'
+                        }`}
+                      >
+                        <span className={`font-semibold ${d.applied ? 'text-accent2' : 'text-neutral-500'}`}>
+                          {d.applied ? '✓ 적용됨' : '✗ 미적용'}
+                        </span>{' '}
+                        <span className="font-semibold">{d.type}</span> @ {d.timestamp}s
+                        {d.sceneNumber != null && ` (Scene ${d.sceneNumber})`}
+                        {!d.applied && d.skipReason && <p className="text-neutral-400 mt-0.5">{d.skipReason}</p>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {latestJob.status === 'COMPLETED' && (
                 <>

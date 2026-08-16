@@ -412,4 +412,66 @@ TIMELINE 탭:
 
 ---
 
-**VIRAL STUDIO V3.1 — PHASE 1, 2, 3, 4 READY. V3.2 — PHASE A + Timeline UI + Beat Sync READY. Google Flow Provider Patch 1~8 전체 READY.** 남은 것은 Edit Plan→렌더러 자동 연동뿐이다.
+## Edit Plan → 렌더러 자동 연동
+
+**상태: DONE (`EDIT_PLAN_RENDERER_INTEGRATION_PLAN.md` 참고 — TRANSITION/IMPACT_SFX_CUE 등은 의도적으로 여전히 미적용)**
+
+Auto Edit Director가 만든 EditDecision을 실제 FFmpeg 렌더에 반영했다. `ffmpegCompiler.js`에 원래 있던 "불안정한 필터를 강제로 넣지 않는다"는 원칙은 그대로 유지하면서, `trim`+`setpts`+`concat`처럼 안정적으로 검증된 필터만 사용했다(`zoompan` 애니메이션이나 클립 간 `xfade`는 여전히 쓰지 않음).
+
+## 실제로 구현하고 검증한 것
+
+```
+실제로 렌더에 적용되는 EditDecision 타입:
+  PUNCH_ZOOM/MICRO_ZOOM/PAYOFF_EMPHASIS → 구간만 scale 확대 후 원 크기로 crop(정적 확대)
+  SPEED_RAMP → 구간만 setpts로 배속(strength→1.25x/1.5x/2x)
+  FREEZE → 구간 시작 프레임 1장을 tpad로 정지
+  TRIM → 구간을 통째로 concat에서 제외(죽은 시간 실제 삭제)
+  HOOK_TEXT_TIMING → 선택된 Hook 텍스트를 drawtext로 오버레이
+적용하지 않는 타입(정직하게 렌더 리포트에 사유 표시): CUT, TRANSITION,
+  IMPACT_SFX_CUE, MUSIC_CUE, LOOP_SUGGESTION, PACE_NOTE
+
+검증 방법: 합성 테스트 클립(1개는 testsrc2+타임스탬프 오버레이, 1개는 단색)에
+Scene 1: PUNCH_ZOOM(1~2s)/SPEED_RAMP(3~4s)/FREEZE(5~5.5s), Scene 2: TRIM(9~10s),
+글로벌 HOOK_TEXT_TIMING(0~2s), 미지원 TRANSITION(8~8.5s)을 수동으로 넣은 EditPlan을
+DB에 직접 삽입한 뒤 실제 렌더 API를 호출해 검증했다:
+  → 출력 길이가 예측한 14.667s(원본 16s − TRIM 1s − SPEED_RAMP 압축 0.333s)와
+    ffprobe 실측으로 정확히 일치.
+  → PUNCH_ZOOM 구간 프레임을 추출해 색상 바/체크보드 패턴이 실제로 확대·크롭된
+    것을 육안으로 확인(단색 클립으로는 확인 불가능해 테스트 클립을 다시 만듦).
+  → FREEZE 구간 두 지점(수정된 타임라인 기준 4.75s/5.1s)에서 프레임을 추출해
+    소스 클립에 새겨넣은 타임스탬프("5.000000")가 완전히 동일함을 확인.
+  → SPEED_RAMP 구간 두 지점(3.1s/3.6s)에서 소스 타임스탬프 델타(0.75s)를
+    출력 타임스탬프 델타(0.5s)로 나눠 정확히 1.5배속임을 계산으로 확인.
+  → HOOK_TEXT_TIMING이 실제로 한글을 렌더링하는 것을 확인 — 이 과정에서 두
+    가지 진짜 문제를 발견해 수정했다: (1) 시스템 기본 폰트에는 한글 글리프가
+    없어 텍스트가 빈 화면으로 렌더링됨 → `lib/render/fontResolver.js`로
+    Linux/macOS/Windows의 실제 CJK 폰트 경로를 순서대로 탐색해 첫 번째로
+    존재하는 것을 사용(이 환경에서는 WenQuanYi Zen Hei). 못 찾으면 렌더 경고에
+    "한글이 빈 화면으로 렌더링될 수 있음"을 정직하게 남긴다. (2) 고정
+    fontsize=64가 PREVIEW 캔버스(540px 폭)에서 텍스트가 화면 밖으로 잘려나감
+    → 캔버스 높이에 비례하는 fontsize로 수정.
+  → TRANSITION은 report에 "클립 간 xfade는 세그먼트 편집과 얽히면 필터
+    그래프가 깨지기 쉬워 이번 버전에서 보류"라는 사유와 함께 미적용으로
+    정확히 표시됨을 확인.
+  → 겹치는 EditDecision(같은 클립의 겹치는 구간에 서로 다른 효과) 처리도
+    단위 테스트로 확인: 두 번째 결정이 첫 번째 구간을 잘라버리면, 첫 번째
+    결정은 "적용됨"이 아니라 "다른 편집 구간과 겹쳐 분리 적용할 수 없음"으로
+    정직하게 다운그레이드된다(적용됐다고 보고해놓고 실제로는 반영 안 되는
+    상황을 방지).
+  → 회귀 확인: Edit Plan이 없는 Production을 렌더하면 duration=16s(원본
+    그대로), decision_report=[], filter_complex가 패치 이전과 완전히 동일한
+    구조(단순 scale+crop+concat)임을 확인 — 기존 동작 100% 보존.
+  → RENDER 탭 UI에 "EDIT PLAN 적용 결과 (N/M개 적용)" 목록 추가, 적용/미적용
+    각각 사유와 함께 표시.
+```
+
+## 여전히 하지 않은 것 (정직하게 기록)
+
+- **CUT/TRANSITION/IMPACT_SFX_CUE/MUSIC_CUE/LOOP_SUGGESTION**: 필터가 불안정하거나(xfade) 실제 자산이 없거나(SFX/Music Cue) 단일 패스 렌더 동작이 아니라서(LOOP_SUGGESTION) 적용하지 않는다.
+- **겹치는 EditDecision의 합성 적용**: 두 효과가 같은 클립의 겹치는 구간을 가리키면 하나만 남기지 않고 둘 다 미적용 처리한다(임의로 우선순위를 정해 합성하지 않음).
+- **한글 폰트가 전혀 없는 환경**: `fontResolver.js`가 알려진 CJK 폰트 후보 중 하나도 찾지 못하면 HOOK_TEXT_TIMING은 그대로 시도하되 경고만 남긴다 — 자동으로 폰트를 설치하거나 원격에서 받아오지 않는다.
+- **drawtext 자동 줄바꿈**: 아주 긴 Hook 텍스트는 화면 폭을 넘어갈 수 있다(직접 줄바꿈 로직을 만들지 않음).
+
+---
+
+**VIRAL STUDIO V3.1 — PHASE 1, 2, 3, 4 READY. V3.2 — PHASE A + Timeline UI + Beat Sync + Edit Plan→렌더러 연동 READY. Google Flow Provider Patch 1~8 전체 READY.** V3.1/V3.2/Google Flow 계획 문서에 정직하게 기록된 항목 중 남은 건 의도적으로 범위 밖에 둔 것들(TRANSITION 등 불안정 필터, SFX/Music Cue 실자산 매칭, Trend Radar 8-agent 파이프라인, 씬 순서 재배열, Compare Prompts 이후의 Export/Wizard류는 이미 완료)뿐이다.

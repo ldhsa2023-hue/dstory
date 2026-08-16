@@ -10,8 +10,8 @@ import { insertRenderJob, updateRenderJob } from '../db/repo';
 
 const execFileAsync = promisify(execFile);
 
-export async function runRender({ production, assets, captionTrack, effectTrack, preset }) {
-  const manifest = buildRenderManifest({ production, assets, captionTrack, preset });
+export async function runRender({ production, assets, captionTrack, effectTrack, editPlan, hookText, preset }) {
+  const manifest = buildRenderManifest({ production, assets, captionTrack, editPlan, hookText, preset });
 
   const effects = effectTrack?.effects || [];
   if (effects.length > 0) {
@@ -72,6 +72,7 @@ export async function runRender({ production, assets, captionTrack, effectTrack,
     render_time_ms: renderTimeMs,
     warnings: manifest.warnings,
     missing_assets: manifest.warnings.filter((w) => w.includes('클립이 없')),
+    decision_report: manifest.decision_report,
   };
 
   return updateRenderJob(job.id, {
