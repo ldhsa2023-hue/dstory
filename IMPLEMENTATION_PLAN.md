@@ -66,3 +66,36 @@ dstory/
 - **Claude CLI 서브프로세스 비용/속도** — 웹 요청마다 `claude -p`를 호출하면 응답 지연(수 초~수십 초)과 사용량이 발생한다. Trend Scan처럼 무거운 작업에만 사용하고, 결과는 반드시 DB에 캐시한다.
 - **ffmpeg는 사용자 로컬 환경 의존** — Phase 3부터 필요. Settings의 SYSTEM STATUS에서 사전 확인하고, 없으면 기능을 비활성화하며 설치 링크를 안내한다(Phase 3에서 구현).
 - **8단계 Research Multi-Agent 파이프라인(Trend Scout→...→Editor in Chief) 전체 구현은 이번 Phase 1 범위 밖** — 대신 단일 구조화 Claude 호출로 트렌드 후보(최대 12개, "최소 50개"에는 못 미침)를 생성하고 이 사실을 명시한다. 추후 세션에서 멀티 에이전트로 확장 가능하도록 인터페이스를 분리해둔다.
+
+---
+
+# V3.2 — Auto Edit Director: Implementation Plan
+
+Phase 1~3(V3.1)가 실제로 동작하는 상태로 검증된 뒤 착수한다. V3.2는 V3.1의 Asset Manager(Phase 3)가 이미 실제 업로드된 클립을 다룰 수 있어야 성립하므로, 순서상 지금이 맞다.
+
+## 이 세션에서 실측 확인한 새로운 사실
+
+`claude -p "<프롬프트>" --allowedTools Read`로 로컬 이미지 파일을 실제로 읽고 시각적으로 정확히 묘사할 수 있음을 실측했다 (합성 이미지에 적어넣은 "TEST FRAME 42" 텍스트를 정확히 읽어냄). 즉 스펙 9절의 `VisualAnalysisProvider` 인터페이스에서 **`ClaudeVisualProvider`가 실제로 안정적으로 동작한다** — 이전 계획서에 적어둔 "이미지 분석이 안정적으로 가능한 경우에만" 조건을 충족한다. Manual 폴백은 Claude CLI 미감지 시에만 사용한다.
+
+## V3.2 Phase A 범위 (이번 세션에서 실제로 구현)
+
+전체 스펙(114개 항목 — Media Analysis, Auto Edit Director, Music/Beat Sync, Timeline UI, Render Compiler, Learning, 4개 Claude Agent, 10개 Skill, Job Queue, 자동 테스트 등)을 한 세션에 전부 구현하는 것은 비현실적이다. Phase 1~3과 동일한 원칙으로 **실제로 측정한 데이터에서만 작동하는 핵심 파이프라인**을 골라 구현한다.
+
+| 구현 | 실제 측정 방식 |
+|---|---|
+| FFprobe 확장 분석 + Technical Validation(PASS/WARNING/FAIL) | ffprobe 실측치 기반, 추측 없음 |
+| Scene Signal (VISUAL_CHANGE_SIGNAL) | ffmpeg `select='gt(scene,τ)'` 필터 실측 — "의미 분석"이 아니라 "픽셀 변화 신호"임을 명시 |
+| Audio Signal (silence/volume) | ffmpeg `silencedetect`/`volumedetect` 필터 실측 |
+| Keyframe 추출 + Contact Sheet | ffmpeg 실제 프레임 추출 (0/25/50/75/100% + scene change 지점) |
+| Visual Review | `ClaudeVisualProvider` — 실제 keyframe 이미지를 Claude가 Read tool로 읽고 묘사 |
+| Timeline Signal Map | 위 신호들을 클립 순서대로 오프셋 합산 — 전부 timestamp/type/strength/source/confidence 포함 |
+| Hook Detector | 0~3초 구간을 0.5초 단위로 나눠 실측 신호 밀도 계산 + 첫 keyframe의 Claude 시각 묘사 → 투명한 수식으로 Hook Readiness Score 산출 |
+| Auto Edit Director | Claude에게 **실측 Signal Map + Storyboard + Hook + Caption/Effect Track**만 제공하고, 그 안에서만 EditDecision(JSON, time/endTime/track/type/parameters/reason/signalIds/confidence)을 만들게 지시 — 측정되지 않은 타임스탬프를 만들지 말라고 명시적으로 강제 |
+
+## 이번 세션에서 하지 않는 것 (정직하게 기록)
+
+- **Beat Analyzer**: `BeatAnalysisProvider` 인터페이스는 만들지만 `LocalBeatAnalyzer`(실제 BPM/온셋 감지)는 구현하지 않는다 — 로컬에 설치된 신뢰할 만한 비트 검출 라이브러리가 없다. `ManualBeatMarker`만 제공한다.
+- **Timeline UI(드래그/트림/줌/트랙 뮤트 등 풀 에디터)**: 이번엔 Edit Plan을 리스트/카드로 보여주는 데 그친다. 실제 드래그 가능한 타임라인 캔버스는 다음 과제.
+- **Auto Loop Engine, Speed Ramp 실제 렌더 적용, A/B Edit, Lock System, 버전 관리(v1/v2/v3)**: Edit Plan은 생성하지만 Phase 3 렌더러에 자동으로 연결해 적용하지는 않는다 (Phase 3 렌더러는 여전히 Effect Track을 SIMPLIFIED로 건너뛴다는 기존 원칙 유지).
+- **`.claude/agents/*.md` 4종, `/analyze-media` 등 10개 Skill**: 이 웹앱은 자체 API Route로 동일한 기능을 이미 제공하므로, Claude Code 세션 전용 Agent/Skill 파일은 이번 범위에서 생성하지 않는다.
+- **자동화된 코드 테스트 스위트**: 여전히 실제 서버 구동 + curl + ffprobe/프레임 검증 방식으로만 검증한다.

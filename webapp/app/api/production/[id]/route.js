@@ -10,6 +10,8 @@ import {
   getPublishPack,
   listAssetsByProduction,
   listRenderJobsByProduction,
+  listMediaAnalysesByProduction,
+  listEditPlansByProduction,
   updateProduction,
 } from '../../../../lib/db/repo';
 
@@ -25,6 +27,8 @@ export async function GET(_req, { params }) {
   const publishPack = getPublishPack(production.id);
   const assets = listAssetsByProduction(production.id);
   const renderJobs = listRenderJobsByProduction(production.id);
+  const mediaAnalyses = listMediaAnalysesByProduction(production.id);
+  const editPlans = listEditPlansByProduction(production.id);
   return NextResponse.json({
     production,
     concept,
@@ -36,6 +40,8 @@ export async function GET(_req, { params }) {
     publishPack,
     assets,
     renderJobs,
+    mediaAnalyses,
+    editPlans,
   });
 }
 

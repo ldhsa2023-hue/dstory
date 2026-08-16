@@ -3,11 +3,27 @@
 import { useEffect, useState } from 'react';
 import CopyButton from '../../../components/CopyButton';
 
-const TABS = ['OVERVIEW', 'HOOK', 'PROMPTS', 'ASSETS', 'AUDIO', 'CAPTIONS', 'EFFECTS', 'RENDER', 'PUBLISH'];
+const TABS = ['OVERVIEW', 'HOOK', 'PROMPTS', 'ASSETS', 'ANALYZE', 'AUTO EDIT', 'AUDIO', 'CAPTIONS', 'EFFECTS', 'RENDER', 'PUBLISH'];
 const HIGGSFIELD_MODES = ['STABLE', 'CINEMATIC', 'VIRAL'];
 const EFFECT_BUDGETS = ['LOW', 'BALANCED', 'HIGH_ENERGY'];
 const ASSET_TYPES = ['VIDEO_CLIP', 'MUSIC', 'SFX', 'VOICE', 'REFERENCE_IMAGE', 'GENERATED_IMAGE', 'THUMBNAIL', 'OTHER'];
 const RENDER_PRESETS = ['PREVIEW', 'FINAL'];
+const EDIT_INTENSITIES = ['MINIMAL', 'BALANCED', 'AGGRESSIVE'];
+
+function ValidationBadge({ status }) {
+  const color = status === 'PASS' ? 'bg-accent2 text-white' : status === 'FAIL' ? 'bg-red-500 text-white' : 'bg-amber-200 text-amber-900';
+  return <span className={`badge ${color}`}>{status || 'UNKNOWN'}</span>;
+}
+
+function ConfidenceBadge({ value }) {
+  const color =
+    value === 'HIGH' || value === 'MEASURED'
+      ? 'bg-accent2 text-white'
+      : value === 'MEDIUM'
+      ? 'bg-amber-200 text-amber-900'
+      : 'bg-neutral-200 text-neutral-600';
+  return <span className={`badge text-[10px] ${color}`}>{value || 'UNKNOWN'}</span>;
+}
 
 function JobStatusBadge({ status }) {
   const color =
@@ -76,6 +92,13 @@ export default function ProductionWorkspacePage({ params }) {
   const [renderPreset, setRenderPreset] = useState('PREVIEW');
   const [rendering, setRendering] = useState(false);
   const [renderError, setRenderError] = useState(null);
+
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState(null);
+
+  const [editIntensity, setEditIntensity] = useState('BALANCED');
+  const [generatingEdit, setGeneratingEdit] = useState(false);
+  const [editGenResult, setEditGenResult] = useState(null);
 
   useEffect(() => {
     refresh();
@@ -238,11 +261,60 @@ export default function ProductionWorkspacePage({ params }) {
     }
   }
 
+  async function handleAnalyze() {
+    setAnalyzing(true);
+    setAnalyzeError(null);
+    try {
+      const res = await fetch('/api/production/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productionId: id }),
+      });
+      const data = await res.json();
+      if (!res.ok) setAnalyzeError(data.error || '분석 요청 실패');
+      refresh();
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  async function handleGenerateEdit() {
+    setGeneratingEdit(true);
+    setEditGenResult(null);
+    try {
+      const res = await fetch('/api/production/auto-edit/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productionId: id, intensity: editIntensity }),
+      });
+      const data = await res.json();
+      if (!res.ok) setEditGenResult({ mode: 'error', error: data.error });
+      else setEditGenResult(data);
+      refresh();
+    } finally {
+      setGeneratingEdit(false);
+    }
+  }
+
   if (!bundle) return <p className="text-sm text-neutral-400">불러오는 중...</p>;
-  const { production, concept, hooks, promptPack, audioPlan, captionTrack, effectTrack, publishPack, assets, renderJobs } =
+  const {
+    production,
+    concept,
+    hooks,
+    promptPack,
+    audioPlan,
+    captionTrack,
+    effectTrack,
+    publishPack,
+    assets,
+    renderJobs,
+    mediaAnalyses,
+    editPlans,
+  } =
     bundle;
   if (!production) return <p className="text-sm text-red-500">Production을 찾을 수 없습니다.</p>;
   const latestJob = renderJobs?.[0];
+  const latestEditPlan = editPlans?.[0];
 
   return (
     <div className="space-y-6">
@@ -494,6 +566,193 @@ export default function ProductionWorkspacePage({ params }) {
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {tab === 'ANALYZE' && (
+        <div className="space-y-4">
+          <div className="card p-5 space-y-3">
+            <p className="label">MEDIA ANALYSIS</p>
+            <p className="text-xs text-neutral-500">
+              ASSETS 탭에서 Scene에 연결한 클립을 실제로 분석합니다: FFprobe 기술 메타데이터, 픽셀 변화/무음 신호 감지,
+              키프레임 추출 + Contact Sheet, Claude의 실제 이미지 판독까지 — 추측하지 않고 측정된 것만 기록합니다.
+            </p>
+            <button className="btn-secondary" onClick={handleAnalyze} disabled={analyzing}>
+              {analyzing ? 'ANALYZING... (클립당 10~40초)' : 'ANALYZE ALL'}
+            </button>
+            {analyzeError && <p className="text-sm text-red-600">{analyzeError}</p>}
+          </div>
+
+          {(!mediaAnalyses || mediaAnalyses.length === 0) && (
+            <p className="text-sm text-neutral-400">아직 분석된 클립이 없습니다.</p>
+          )}
+
+          {mediaAnalyses
+            ?.filter((a) => assets?.some((asset) => asset.id === a.asset_id && asset.linked_scene_number === a.scene_number))
+            .map((a) => (
+            <div key={a.id} className="card p-5 space-y-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="badge bg-neutral-900 text-white">Scene {a.scene_number}</span>
+                <ValidationBadge status={a.validation?.status} />
+                <span className="text-xs text-neutral-400">
+                  {a.technical?.width}x{a.technical?.height} · {a.technical?.duration_sec?.toFixed?.(1)}s ·{' '}
+                  {a.technical?.fps}fps · {a.technical?.codec} · {Math.round((a.technical?.bitrate || 0) / 1000)}kbps ·{' '}
+                  audio: {String(a.technical?.hasAudio)}
+                </span>
+              </div>
+
+              {a.validation?.issues?.length > 0 && (
+                <ul className="text-xs space-y-1">
+                  {a.validation.issues.map((iss, i) => (
+                    <li key={i} className={iss.level === 'FAIL' ? 'text-red-600' : 'text-amber-700'}>
+                      ⚠ [{iss.level}] {iss.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {a.contact_sheet_path && (
+                <img
+                  src={`/api/production/analyze/${a.asset_id}/contact-sheet`}
+                  alt={`Scene ${a.scene_number} contact sheet`}
+                  className="w-full rounded-lg border border-neutral-200"
+                />
+              )}
+
+              {a.visual_review?.description && (
+                <div className="bg-neutral-50 rounded-lg p-3 text-sm">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-semibold text-neutral-500">CLAUDE VISUAL REVIEW</span>
+                    <ConfidenceBadge value={a.visual_review.confidence} />
+                  </div>
+                  <p>{a.visual_review.description}</p>
+                  {a.visual_review.potential_issues?.length > 0 && (
+                    <p className="text-xs text-amber-700 mt-1">
+                      잠재적 이슈: {a.visual_review.potential_issues.join(', ')}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {a.signals?.length > 0 ? (
+                <div>
+                  <p className="text-xs font-semibold text-neutral-500 mb-1">SIGNALS ({a.signals.length})</p>
+                  <ul className="text-xs space-y-0.5">
+                    {a.signals.map((s, i) => (
+                      <li key={i} className="flex items-center gap-2">
+                        <span className="text-neutral-400">{s.timestamp_sec}s</span>
+                        <span className="badge bg-neutral-100 text-neutral-600 text-[10px]">{s.type}</span>
+                        <ConfidenceBadge value={s.confidence} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p className="text-xs text-neutral-400">
+                  감지된 신호 없음 (컷 없는 단일 샷일 경우 정상 — 픽셀 변화 감지기는 부드러운 연속 동작을 잡지 못합니다).
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'AUTO EDIT' && (
+        <div className="space-y-4">
+          <div className="card p-5 space-y-3">
+            <p className="label">AUTO EDIT DIRECTOR</p>
+            <p className="text-xs text-neutral-500">
+              ANALYZE 탭에서 측정한 실제 Signal Map만 근거로 편집 결정을 생성합니다. 측정되지 않은 타임스탬프는 만들지
+              않으며, 근거가 약하면 confidence를 스스로 낮춥니다.
+            </p>
+            <div className="flex gap-2">
+              {EDIT_INTENSITIES.map((i) => (
+                <button
+                  key={i}
+                  onClick={() => setEditIntensity(i)}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold border ${
+                    editIntensity === i ? 'bg-accent text-white border-accent' : 'border-neutral-300 text-neutral-600'
+                  }`}
+                >
+                  {i}
+                </button>
+              ))}
+            </div>
+            <button className="btn-secondary" onClick={handleGenerateEdit} disabled={generatingEdit}>
+              {generatingEdit ? 'GENERATING EDIT PLAN...' : 'GENERATE EDIT'}
+            </button>
+            {editGenResult?.mode === 'template' && (
+              <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg p-3">
+                Claude CLI 미감지 — 프롬프트를 직접 실행하세요.
+                <pre className="codebox mt-2">{editGenResult.prompt}</pre>
+              </div>
+            )}
+            {editGenResult?.mode === 'error' && <p className="text-sm text-red-600">오류: {editGenResult.error}</p>}
+          </div>
+
+          {latestEditPlan?.hook_score?.available && (
+            <div className="card p-5 space-y-2">
+              <div className="flex items-center gap-2">
+                <p className="label">HOOK READINESS</p>
+                <span className="badge bg-accent text-white text-lg">{latestEditPlan.hook_score.readiness_score}/100</span>
+                {latestEditPlan.hook_score.weak_opening && <span className="badge bg-red-500 text-white">⚠ WEAK OPENING</span>}
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                {Object.entries(latestEditPlan.hook_score.scores || {}).map(([k, v]) => (
+                  <div key={k} className="bg-neutral-50 rounded p-2 text-center">
+                    <p className="text-neutral-400">{k}</p>
+                    <p className="font-bold">{v}/5</p>
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-4 gap-1 text-[10px] text-neutral-500">
+                {latestEditPlan.hook_score.windows?.map((w) => (
+                  <div key={w.range} className="bg-neutral-50 rounded p-1 text-center">
+                    {w.range}: {w.signal_count}
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-neutral-400">{latestEditPlan.hook_score.method_note}</p>
+            </div>
+          )}
+
+          {latestEditPlan?.decisions?.length > 0 && (
+            <div className="card p-5 space-y-2">
+              <p className="label">EDIT PLAN ({latestEditPlan.decisions.length}개 결정, intensity: {latestEditPlan.intensity})</p>
+              <div className="space-y-2">
+                {latestEditPlan.decisions.map((d, i) => (
+                  <div key={i} className="border border-neutral-100 rounded-lg p-3 text-sm">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="badge bg-neutral-900 text-white text-[10px]">{d.track}</span>
+                      <span className="badge bg-accent2/10 text-accent2 text-[10px]">{d.type}</span>
+                      <span className="text-xs text-neutral-400">
+                        {d.timestamp}s{d.endTimestamp !== d.timestamp ? `–${d.endTimestamp}s` : ''}
+                      </span>
+                      <ConfidenceBadge value={d.confidence} />
+                    </div>
+                    <p className="text-xs text-neutral-600">{d.reason}</p>
+                    <p className="text-[10px] text-neutral-400 mt-1">근거 신호: {(d.signalIds || []).join(', ')}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {editPlans?.length > 1 && (
+            <div className="card p-5">
+              <p className="label mb-2">과거 Edit Plan ({editPlans.length})</p>
+              <ul className="text-sm space-y-1">
+                {editPlans.map((p) => (
+                  <li key={p.id} className="flex justify-between border-b border-neutral-100 py-1">
+                    <span>
+                      {p.intensity} · {new Date(p.created_at).toLocaleString('ko-KR')}
+                    </span>
+                    <span className="text-neutral-400">{p.decisions.length}개 결정</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 

@@ -649,3 +649,112 @@ function parseRenderJobRow(row) {
     report: safeParse(row.report, {}),
   };
 }
+
+// ---------- Media Analyses (one row per analyzed clip asset) ----------
+export function upsertMediaAnalysis(assetId, patch) {
+  const db = getDb();
+  const existing = db.prepare('SELECT * FROM media_analyses WHERE asset_id = ?').get(assetId);
+  if (existing) {
+    const merged = { ...parseMediaAnalysisRow(existing), ...patch };
+    db.prepare(
+      `UPDATE media_analyses SET scene_number = ?, technical = ?, validation = ?, signals = ?, keyframes = ?,
+        contact_sheet_path = ?, visual_review = ? WHERE asset_id = ?`
+    ).run(
+      merged.scene_number ?? null,
+      JSON.stringify(merged.technical || {}),
+      JSON.stringify(merged.validation || {}),
+      JSON.stringify(merged.signals || []),
+      JSON.stringify(merged.keyframes || []),
+      merged.contact_sheet_path || null,
+      JSON.stringify(merged.visual_review || {}),
+      assetId
+    );
+    return getMediaAnalysisByAsset(assetId);
+  }
+  const id = genId('media');
+  db.prepare(
+    `INSERT INTO media_analyses (id, created_at, production_id, asset_id, scene_number, technical, validation,
+      signals, keyframes, contact_sheet_path, visual_review)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+  ).run(
+    id,
+    now(),
+    patch.production_id,
+    assetId,
+    patch.scene_number ?? null,
+    JSON.stringify(patch.technical || {}),
+    JSON.stringify(patch.validation || {}),
+    JSON.stringify(patch.signals || []),
+    JSON.stringify(patch.keyframes || []),
+    patch.contact_sheet_path || null,
+    JSON.stringify(patch.visual_review || {})
+  );
+  return getMediaAnalysisByAsset(assetId);
+}
+
+export function getMediaAnalysisByAsset(assetId) {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM media_analyses WHERE asset_id = ?').get(assetId);
+  return row ? parseMediaAnalysisRow(row) : null;
+}
+
+export function listMediaAnalysesByProduction(productionId) {
+  const db = getDb();
+  return db
+    .prepare('SELECT * FROM media_analyses WHERE production_id = ? ORDER BY scene_number ASC')
+    .all(productionId)
+    .map(parseMediaAnalysisRow);
+}
+
+function parseMediaAnalysisRow(row) {
+  return {
+    ...row,
+    technical: safeParse(row.technical, {}),
+    validation: safeParse(row.validation, {}),
+    signals: safeParse(row.signals, []),
+    keyframes: safeParse(row.keyframes, []),
+    visual_review: safeParse(row.visual_review, {}),
+  };
+}
+
+// ---------- Edit Plans ----------
+export function insertEditPlan(item) {
+  const db = getDb();
+  const id = genId('edit');
+  db.prepare(
+    `INSERT INTO edit_plans (id, created_at, production_id, intensity, hook_score, signal_map, decisions)
+     VALUES (?,?,?,?,?,?,?)`
+  ).run(
+    id,
+    now(),
+    item.production_id,
+    item.intensity || 'BALANCED',
+    JSON.stringify(item.hook_score || {}),
+    JSON.stringify(item.signal_map || []),
+    JSON.stringify(item.decisions || [])
+  );
+  return getEditPlan(id);
+}
+
+export function getEditPlan(id) {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM edit_plans WHERE id = ?').get(id);
+  return row ? parseEditPlanRow(row) : null;
+}
+
+export function listEditPlansByProduction(productionId) {
+  const db = getDb();
+  return db
+    .prepare('SELECT * FROM edit_plans WHERE production_id = ? ORDER BY created_at DESC')
+    .all(productionId)
+    .map(parseEditPlanRow);
+}
+
+function parseEditPlanRow(row) {
+  return {
+    ...row,
+    hook_score: safeParse(row.hook_score, {}),
+    signal_map: safeParse(row.signal_map, []),
+    decisions: safeParse(row.decisions, []),
+  };
+}

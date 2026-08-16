@@ -173,6 +173,30 @@ function migrate(db) {
       commercial_use_confirmed INTEGER DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS media_analyses (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      production_id TEXT NOT NULL,
+      asset_id TEXT NOT NULL,
+      scene_number INTEGER,
+      technical TEXT,
+      validation TEXT,
+      signals TEXT,
+      keyframes TEXT,
+      contact_sheet_path TEXT,
+      visual_review TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS edit_plans (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      production_id TEXT NOT NULL,
+      intensity TEXT,
+      hook_score TEXT,
+      signal_map TEXT,
+      decisions TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS render_jobs (
       id TEXT PRIMARY KEY,
       created_at TEXT NOT NULL,

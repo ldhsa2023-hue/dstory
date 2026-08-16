@@ -126,4 +126,55 @@ npm run dev
 
 ---
 
-**VIRAL STUDIO V3.1 — PHASE 1, PHASE 2, PHASE 3 READY.** Phase 4와 V3.2는 아직 준비되지 않았다.
+# VIRAL STUDIO V3.2 — AUTO EDIT DIRECTOR
+
+**상태: DONE (Phase A 범위 — 세부 축소 사항은 `IMPLEMENTATION_PLAN.md`의 V3.2 섹션 참고)**
+
+## 이 세션에서 실측 확인한 핵심 사실
+
+`claude -p "<프롬프트>" --allowedTools Read`로 로컬 이미지 파일을 실제로 읽고 정확히 묘사할 수 있음을 확인했다 (합성 테스트 이미지에 그린 "TEST FRAME 42" 텍스트를 정확히 읽어냄). 이 덕분에 `ClaudeVisualProvider`가 폴백이 아니라 **실제 동작하는 1급 기능**으로 구현되었다.
+
+## 실제로 구현하고 검증한 것
+
+```
+ASSETS 탭에서 연결한 실제 클립을 ANALYZE 탭에서 분석:
+  → FFprobe 확장 메타데이터(비트레이트/오디오 코덱/샘플레이트/채널/회전) 실측
+  → Technical Validation: 낮은 비트레이트(98kbps, 22kbps) 정확히 WARNING 표시,
+    오디오 트랙 없음(Scene 3) 정확히 WARNING 표시
+  → Scene Signal: ffmpeg `select='gt(scene,τ)'`로 실제 컷 지점 감지
+    - 단색 무변화 클립(Scene 2/3) → 신호 0개 (정상 — 지어내지 않음)
+    - 의도적으로 4초 지점에 하드컷(파랑→시안)을 넣은 테스트 클립 → 정확히 t=4.0s에서
+      VISUAL_CHANGE_SIGNAL 감지 확인
+  → Keyframe 5장(0/25/50/75/100%) + 감지된 컷 지점 추가 추출 → Contact Sheet 생성
+  → ClaudeVisualProvider가 각 Contact Sheet를 실제로 읽고 묘사:
+    - Scene 1(컷 있음): "divided into two solid-colored blocks... blue panel on the left
+      and a cyan panel on the right" — 실제 이미지 내용과 정확히 일치
+    - Scene 2(초록 단색): "solid, uniform green color" — 일치
+    - Scene 3(빨강 단색): "solid, uniform red field" — 일치
+    - 세 경우 모두 "BAD_FRAME" 이슈를 스스로 플래그 — 실제로 내용이 없는 프레임이므로 정직한 판단
+AUTO EDIT 탭에서 Auto Edit Director 실행 (intensity: BALANCED):
+  → Hook Readiness Score 73/100 산출 (투명 공식: clarity 5/5 + stop_power 1/5 + text_support 5/5,
+    첫 3초 구간별 실측 신호 0개이므로 stop_power 낮게 산출 — 정직하게 낮춤)
+  → 9개 EditDecision 생성, 전부 실제 Signal Map의 id를 signalIds로 인용:
+    - t=4s PUNCH_ZOOM → sig-1-4-VISUAL_CHANGE_SIGNAL (실제 감지된 컷 지점)
+    - t=8s/16s TRANSITION+IMPACT_SFX_CUE → storyboard 씬 경계(실측 스토리보드 길이 기반)
+    - t=8~16s TRIM 제안 → "이 구간에 신호가 없어 정체 가능성" (LOW confidence로 스스로 낮춤)
+    - t=24s LOOP_SUGGESTION → "루프 적합성 자체는 측정된 신호가 아니므로 신뢰도를 낮춘다"라고
+      스스로 명시 (근거 없는 추론에 confidence LOW를 정직하게 부여)
+```
+
+전 과정을 curl(API), 독립 프레임/컨택트시트 육안 검증, Playwright 브라우저 스크린샷으로 확인했다. `ANALYZE`/`AUTO EDIT` 탭 모두 실제 데이터로 정상 렌더링됨을 확인했고, 테스트 중 발생한 표시 중복(재연결된 자산의 이전 분석 잔존)도 발견 즉시 필터링 로직으로 수정했다.
+
+## Phase A에서 의도적으로 하지 않은 것 (정직하게 기록)
+
+- **Beat Analyzer**: `LocalBeatAnalyzer`(실제 BPM/온셋 감지)는 구현하지 않았다. 신뢰할 만한 로컬 비트 검출 라이브러리가 없어 `ManualBeatMarker`만 지원한다.
+- **Timeline UI**: 드래그/트림/줌/트랙 뮤트가 가능한 풀 캔버스 에디터는 없다. Edit Plan은 카드 리스트로만 표시된다.
+- **Edit Plan을 렌더러에 자동 적용하지 않는다**: Auto Edit Director가 만든 EditDecision(Punch Zoom, Speed Ramp 등)은 Phase 3 렌더러에 아직 연결되어 있지 않다 — 렌더러는 여전히 Effect Track을 SIMPLIFIED로 건너뛴다. Edit Plan은 현재 "제안/검토용"이다.
+- **Auto Loop Engine, A/B Edit, Lock System, 버전 관리(v1/v2/v3)**: 미구현.
+- **`.claude/agents/*.md` 4종, `/analyze-media` 등 10개 Skill**: 이 웹앱이 동일 기능을 API Route로 이미 제공하므로 별도 생성하지 않았다.
+- **자동화된 코드 테스트 스위트**: 여전히 실제 서버 구동 + curl + ffprobe + Playwright 방식으로만 검증한다.
+- **Visual Review는 클립당 1회(Contact Sheet 전체)**: 스펙은 프레임별 개별 판독까지 요구하지만, 비용/속도를 위해 Contact Sheet 1장을 읽는 것으로 축소했다. Hook Detector도 이 Contact Sheet 판독을 재사용한다(별도의 "첫 프레임 전용" 호출을 하지 않음).
+
+---
+
+**VIRAL STUDIO V3.1 — PHASE 1, 2, 3 READY. V3.2 — PHASE A READY.** Phase 4와 V3.2의 나머지 범위(Timeline UI, Beat Sync, Render 연동, Learning)는 아직 준비되지 않았다.

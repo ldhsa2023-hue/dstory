@@ -1,4 +1,4 @@
-# Viral Studio V3.1 (Phase 1 + Phase 2 + Phase 3)
+# Viral Studio V3.1 + V3.2 Phase A
 
 로컬에서 실행되는 AI 콘텐츠 제작 운영 시스템. Trend Intelligence → Concept → Hook → ChatGPT/Higgsfield Prompt Pack까지, 실제 Claude Code CLI를 AI 백엔드로 사용해 자동 생성한다. 이미지·영상 생성 자체(ChatGPT/Higgsfield 호출)는 자동화하지 않으며, 생성된 프롬프트를 사용자가 직접 복사해 사용한다.
 
@@ -67,15 +67,33 @@ PRODUCTION › RENDER 탭: PREVIEW(540x960, 빠른 인코딩) 또는 FINAL(1080x
 
 `webapp/scripts/seed-test-production.mjs`로 Claude 호출 없이 테스트용 Production을 만들고, ffmpeg의 `color`/`sine` 소스로 합성한 테스트 클립을 업로드해 렌더 파이프라인 전체(업로드 → 링크 → PREVIEW/FINAL 렌더 → 프레임 추출 검증 → 실패 복구)를 실측 검증했다. 자세한 내용은 `V3_1_STATUS.md`.
 
+## V3.2 워크플로우 — Auto Edit Director (실제 동작 확인됨)
+
+```
+PRODUCTION › ANALYZE 탭: ANALYZE ALL
+  → 연결된 클립마다: FFprobe 확장 분석(비트레이트/오디오코덱/회전 등) → PASS/WARNING/FAIL 판정
+  → ffmpeg scene-score/silencedetect로 실제 컷·무음 지점 감지 (VISUAL_CHANGE_SIGNAL — 픽셀 변화일 뿐 "장면 이해"라고 주장하지 않음)
+  → 키프레임 5장 + 감지된 컷 지점 추출 → Contact Sheet 생성
+  → ClaudeVisualProvider가 `claude -p --allowedTools Read`로 Contact Sheet 파일을 실제로 읽고 묘사
+    (Claude CLI 미감지 시 ManualVisualProvider로 전환 — 사람이 Contact Sheet를 직접 검토)
+PRODUCTION › AUTO EDIT 탭: Intensity(MINIMAL/BALANCED/AGGRESSIVE) 선택 → GENERATE EDIT
+  → Hook Readiness Score(투명 공식, 학습 모델 아님) 산출
+  → Claude에게 실측 Signal Map만 제공해 EditDecision(Cut/Punch Zoom/Transition/SFX Cue 등) 생성
+    — 모든 결정은 실제 signalId를 인용해야 하며, 근거가 약하면 confidence를 스스로 LOW로 낮춤
+```
+
+이 클립이 실제로는 아무 콘텐츠 없는 단색 테스트 영상임에도 Claude가 "solid, uniform blue/green/red" 로 정확히 묘사하고 스스로 BAD_FRAME 이슈를 표시했다 — 보지 못한 내용을 추측하지 않는다는 원칙이 실제로 지켜짐을 확인했다. 자세한 내용은 `V3_1_STATUS.md`의 V3.2 섹션과 `IMPLEMENTATION_PLAN.md`의 축소 범위 설명 참고.
+
 ## 아키텍처
 
 | 구성 | 내용 |
 |---|---|
-| DB | `node:sqlite` (`data/viral-studio.sqlite`, git 추적 제외) — ChannelProfile, ResearchRun, Trend, Concept, Hook, Production, PromptPack, AudioPlan, CaptionTrack, EffectTrack, PublishPack, Asset, RenderJob |
+| DB | `node:sqlite` (`data/viral-studio.sqlite`, git 추적 제외) — ChannelProfile, ResearchRun, Trend, Concept, Hook, Production, PromptPack, AudioPlan, CaptionTrack, EffectTrack, PublishPack, Asset, RenderJob, MediaAnalysis, EditPlan |
 | AI Engine | `lib/ai/engine.js` — `ClaudeCLIEngine`(기본, `claude -p --output-format json` subprocess) / `ManualEngine`(fallback, 프롬프트만 생성) |
-| 프롬프트 빌더 | `lib/prompts/{trendResearch,conceptLab,hookEngine,promptStudio,audioDirector,captionEngine,effectDirector,publishPack}.js` |
-| 채점 로직 | `lib/scoring.js` — Channel Fit Score, Today Top3 랭킹, Higgsfield 모델 카탈로그 |
-| 미디어/렌더 | `lib/media/{paths,ffprobe}.js`(안전한 업로드 경로 + 기술 메타데이터), `lib/render/{manifest,ffmpegCompiler,runner}.js`(Render Manifest → FFmpeg 인자 배열 → 실행) |
+| Visual Provider | `lib/ai/visualProvider.js` — `ClaudeVisualProvider`(`claude -p --allowedTools Read`로 실제 이미지 판독) / `ManualVisualProvider`(fallback) |
+| 프롬프트 빌더 | `lib/prompts/{trendResearch,conceptLab,hookEngine,promptStudio,audioDirector,captionEngine,effectDirector,publishPack,autoEditDirector}.js` |
+| 채점 로직 | `lib/scoring.js` — Channel Fit Score, Today Top3 랭킹, Higgsfield 모델 카탈로그. `lib/media/hookDetector.js` — Hook Readiness 투명 공식 |
+| 미디어/렌더 | `lib/media/{paths,ffprobe,technicalValidation,signalAnalysis,keyframes,analyzeClip,timelineMap}.js`, `lib/render/{manifest,ffmpegCompiler,runner}.js`(Render Manifest → FFmpeg 인자 배열 → 실행) |
 
 Claude 호출은 항상 구조화된 JSON 스키마를 요청하고, 파싱 실패 시 1회 자동 재시도(validation feedback 포함)한다. Trend Radar 조사에만 `WebSearch`/`WebFetch` 도구 접근을 허용하고, 나머지(Concept/Hook/Prompt 생성)는 도구 접근 없이 순수 텍스트 생성만 수행한다.
 
@@ -96,4 +114,8 @@ Claude 호출은 항상 구조화된 JSON 스키마를 요청하고, 파싱 실�
 - **Publish 탭의 "APPROVE FINAL"은 여전히 콘텐츠 패키지(제목/설명/썸네일 기획/정책 검토) 승인이다.** Render 탭에서 실제 MP4를 만들 수 있게 됐지만, Publish 탭의 승인 버튼과 렌더 완료 여부는 아직 서로 연결되어 있지 않다(수동으로 각각 확인 필요) — 다음 개선 과제.
 - **로컬 렌더러는 Effect Track의 효과(Punch Zoom 등)를 적용하지 않는다.** 렌더 리포트에 SIMPLIFIED로 명시하고, 클립 연결·자막 하드섭·배경음악 믹스·화면비 변환·컷 순서만 지원한다. 원본 클립의 오디오는 사용하지 않고 배경음악(또는 무음)만 최종 오디오로 쓴다. 트랜지션은 하드컷만 지원한다.
 - **Job Queue는 비동기 폴링 없이 동기 실행이다.** 로컬 단일 사용자·짧은 Shorts 클립 기준으로는 문제없지만, 렌더 요청이 완료될 때까지 API 응답이 대기한다.
-- **Claude CLI subprocess 호출은 느리다** (트렌드 조사 ~2-3분, 컨셉/훅/프롬프트 생성 각 1-2분). 웹 요청 타임아웃을 길게 잡아두었다.
+- **Claude CLI subprocess 호출은 느리다** (트렌드 조사 ~2-3분, 컨셉/훅/프롬프트 생성 각 1-2분, 클립 분석은 클립당 10~40초). 웹 요청 타임아웃을 길게 잡아두었다.
+- **V3.2 Auto Edit Director는 제안만 한다 — 렌더러에 자동 적용되지 않는다.** Edit Plan은 검토용이며, Phase 3 렌더러(RENDER 탭)는 여전히 Effect Track/Edit Plan을 렌더에 반영하지 않는다.
+- **Beat Analyzer는 Manual만 지원한다.** 로컬에 신뢰할 만한 BPM/온셋 감지 라이브러리가 없어 실제 비트 검출(`LocalBeatAnalyzer`)은 구현하지 않았다.
+- **Timeline UI는 카드/리스트 뷰만 있다.** 드래그·트림·줌이 가능한 풀 캔버스 타임라인 에디터는 없다.
+- **Visual Review는 클립당 1회, Contact Sheet 전체를 대상으로 한다.** 개별 키프레임을 프레임 단위로 판독하지 않는다(비용/속도 절충).

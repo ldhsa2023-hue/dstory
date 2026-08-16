@@ -36,6 +36,14 @@ export function tempDir(productionId) {
   return dir;
 }
 
+export function keyframesDir(productionId, assetId) {
+  assertSafeId(productionId, 'productionId');
+  assertSafeId(assetId, 'assetId');
+  const dir = path.join(DATA_DIR, 'temp', productionId, 'keyframes', assetId);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 // Allowlist of accepted upload types. The stored filename is always
 // `${assetId}${ext}` from this table — the user's original filename is never
 // used to build a filesystem path, only kept as a display label.

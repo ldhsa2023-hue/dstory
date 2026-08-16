@@ -39,6 +39,12 @@ export async function probeFile(absolutePath) {
     if (den) fps = Math.round((num / den) * 100) / 100;
   }
 
+  let rotation = null;
+  const rotateTag = videoStream?.tags?.rotate;
+  const displayMatrix = (videoStream?.side_data_list || []).find((s) => s.side_data_type === 'Display Matrix');
+  if (rotateTag) rotation = Number(rotateTag);
+  else if (displayMatrix?.rotation != null) rotation = Number(displayMatrix.rotation);
+
   return {
     duration_sec,
     width: videoStream?.width || null,
@@ -48,6 +54,14 @@ export async function probeFile(absolutePath) {
     hasVideo: Boolean(videoStream),
     hasAudio: Boolean(audioStream),
     formatName: data.format?.format_name || null,
+    // extended fields (V3.2 media analysis)
+    bitrate: Number(data.format?.bit_rate) || null,
+    audioCodec: audioStream?.codec_name || null,
+    sampleRate: audioStream?.sample_rate ? Number(audioStream.sample_rate) : null,
+    channels: audioStream?.channels || null,
+    rotation,
+    frameCount: videoStream?.nb_frames ? Number(videoStream.nb_frames) : null,
+    startTime: data.format?.start_time ? Number(data.format.start_time) : null,
   };
 }
 
