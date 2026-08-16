@@ -23,6 +23,9 @@ export default function TrendRadarPage() {
   const [window_, setWindow] = useState('7D');
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState(null);
+  const [manualResultText, setManualResultText] = useState('');
+  const [submittingManual, setSubmittingManual] = useState(false);
+  const [manualError, setManualError] = useState(null);
 
   useEffect(() => {
     refresh();
@@ -46,6 +49,32 @@ export default function TrendRadarPage() {
       refresh();
     } finally {
       setScanning(false);
+    }
+  }
+
+  async function handleManualSubmit() {
+    setSubmittingManual(true);
+    setManualError(null);
+    try {
+      const res = await fetch('/api/trends/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filters: { platform, window: window_ },
+          manualResult: manualResultText,
+          originalPrompt: scanResult?.prompt || '',
+        }),
+      });
+      const data = await res.json();
+      if (data.mode === 'error') {
+        setManualError(data.error);
+        return;
+      }
+      setScanResult(data);
+      setManualResultText('');
+      refresh();
+    } finally {
+      setSubmittingManual(false);
     }
   }
 
@@ -105,10 +134,30 @@ export default function TrendRadarPage() {
         </button>
 
         {scanResult?.mode === 'template' && (
-          <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg p-3">
-            Claude CLI가 감지되지 않아 자동 실행되지 않았습니다. 아래 프롬프트를 Claude/ChatGPT에 직접 실행한 뒤 결과를
-            수동으로 정리해 등록하세요.
-            <pre className="codebox mt-2">{scanResult.prompt}</pre>
+          <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-3">
+            <div>
+              Claude CLI가 감지되지 않아 자동 실행되지 않았습니다. 아래 프롬프트를 Claude/ChatGPT에 직접 실행한 뒤, 나온
+              JSON 배열 결과를 그대로 복사해서 아래 칸에 붙여넣고 등록하세요.
+              <pre className="codebox mt-2">{scanResult.prompt}</pre>
+            </div>
+            <div>
+              <p className="label mb-1">결과 붙여넣기 (JSON 배열)</p>
+              <textarea
+                className="input w-full font-mono text-xs"
+                rows={8}
+                placeholder='[{"name": "...", "platform": "...", ...}]'
+                value={manualResultText}
+                onChange={(e) => setManualResultText(e.target.value)}
+              />
+              <button
+                className="btn-secondary text-xs mt-2"
+                onClick={handleManualSubmit}
+                disabled={submittingManual || !manualResultText.trim()}
+              >
+                {submittingManual ? '등록 중...' : '결과 등록'}
+              </button>
+              {manualError && <p className="text-red-600 mt-2">오류: {manualError}</p>}
+            </div>
           </div>
         )}
         {scanResult?.mode === 'error' && (
