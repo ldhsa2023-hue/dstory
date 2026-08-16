@@ -1,0 +1,6 @@
+trend_id,date_spotted,source,platform,trend_type,description,genre_fit(1-5),higgsfield_feasibility(1-5),speed_fit(1-5),risk_low(1-5),brand_fit(1-5),total_score,decision,adapted_idea_id,fast_lane_deadline,outcome,notes
+TREND-001,2026-08-16,websearch,tiktok,sound_mashup,"'What's Going On' - Nicki 'Beez in the Trap' x 4 Non Blondes 'What's Up?' 매쉬업 사운드",2,3,3,3,3,14,monitor,,,,사운드 자체는 저작권 리스크로 원곡 사용 불가 - 감정 곡선(고조→해방)만 차용 검토
+TREND-002,2026-08-16,websearch,tiktok,challenge,"Suspect Challenge - 'Hope Along the Way' 음원, 용의자가 처음부터 그 자리에 있었다는 반전 공개형 챌린지",4,4,4,4,4,20,fast-track,,,,반전 구조를 판타지 시리즈 캐릭터로 재해석 - '숨어있던 존재가 처음부터 그 자리에 있었다' 클리프행어와 결합 가능
+TREND-003,2026-08-16,websearch,youtube_shorts,format,"Before-and-after 즉시 비주얼 임팩트 포맷 (변신/완성 결과 공개형)",5,5,5,5,4,24,fast-track,,,,음식 장르에 최적 - 재료→완성 요리 즉시 리빌 샷으로 이식
+TREND-004,2026-08-16,websearch,youtube_shorts,niche,"AI + 실생활 시나리오 결합 콘텐츠 (2026 급성장 니치)",4,5,4,5,3,21,fast-track,,,,'AI 캐릭터가 실제 상황에 놓이면' 류 판타지/일상 크로스오버 시리즈 소재로 활용
+TREND-005,2026-08-16,websearch,cross_platform,production_trend,"Sora2/Higgsfield 트렌드 프리셋 - 이미지 1장으로 즉시 트렌드형 광고/영상 생성하는 워크플로우 확산",3,5,5,5,3,21,monitor,,,,직접 콘텐츠 소재는 아니나 우리 Fast Lane 제작 속도 자체를 높이는 데 참고 - 프리셋 상시 모니터링 대상
