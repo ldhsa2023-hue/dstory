@@ -1,0 +1,14 @@
+node_modules/
+
+# 로그인 세션(쿠키) 파일 - 절대 커밋하지 마세요 (계정 탈취 위험)
+.auth/
+
+# 생성된 이미지/영상 원본 (용량이 크므로 기본적으로 git에 올리지 않음)
+output/*
+!output/.gitkeep
+output/images/
+output/videos/
+output/debug/
+
+*.log
+.env

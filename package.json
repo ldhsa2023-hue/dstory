@@ -1,0 +1,16 @@
+{
+  "name": "dstory-news-video-automation",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "매일 인기 뉴스를 조사하고, ChatGPT(이미지)와 Sora(영상)를 브라우저 자동화로 이어서 호출해 릴스/쇼츠용 영상을 만들어 저장하는 자동화 파이프라인",
+  "scripts": {
+    "login": "node scripts/login-setup.js",
+    "news": "node src/newsResearch.js",
+    "generate": "node src/runDaily.js",
+    "daily": "node src/runDaily.js --fetch-news"
+  },
+  "dependencies": {
+    "playwright": "1.56.1"
+  }
+}
